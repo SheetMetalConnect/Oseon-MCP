@@ -9,15 +9,27 @@ A Model Context Protocol (MCP) server that connects AI assistants to TRUMPF Oseo
 
 **Purpose:** Demonstrate how to connect AI assistants to manufacturing systems for intelligent order management and production insights.
 
-## What This Does
+## What AI Agents Can Do
 
-Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
-- 🏭 **Consistent dashboards** - `get_production_dashboard()` and `get_sales_dashboard()` with identical structure every time
-- 📊 **Query customer orders** - "Show me recent orders for customer XYZ"
-- 🔧 **Check production status** - "What's in progress?", "What's released?", "What's finished?"
-- 🔍 **Search orders efficiently** - "Find everything related to ORDER123"
-- 📈 **Get data intelligently** - Auto-fetches up to 200 records with smart pagination
-- 🔗 **Link related data** - "Which production orders belong to customer order ORDER123?"
+Connect AI assistants (like Claude) directly to your TRUMPF Oseon system for intelligent manufacturing insights:
+
+### 🎯 **Smart Dashboard Commands**
+- 🏭 **"Show production dashboard"** → Recent activity + issues (7-day focused)
+- 🏢 **"Show sales dashboard"** → Recent sales + linked production orders
+- 📊 **"Get production status"** → Consistent 4-section overview every time
+- 🔗 **"Sales dashboard with production"** → Auto-links sales to manufacturing
+
+### 🔍 **Intelligent Order Analysis**
+- 📋 **"Show me order 400139"** → Sales order + all matching production orders
+- 🔍 **"Find RELEASED orders"** → Status filtering + production breakdown
+- 🎯 **"Search for ORDER123"** → Wildcard search across both systems
+- 📈 **"Recent customer activity"** → 12-month smart filtering with overrides
+
+### 🤖 **Agent-Friendly Features**
+- ⚡ **Smart defaults** - Always gets relevant data (7-day recent focus)
+- 🔄 **Auto-pagination** - Fetches up to 200 records intelligently  
+- 🔗 **Cross-system linking** - Sales orders automatically find production orders
+- 💡 **Override guidance** - Tells agents how to get broader data when needed
 
 ## Quick Start
 
@@ -57,13 +69,13 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
    ```
 
 6. **Start using it** - Try asking Claude:
-   - **"Get production dashboard"** (consistent management overview)
-   - **"Get sales dashboard"** (consistent management overview)
-   - **"Get production dashboard template"** (instant React artifact)
-   - **"Get sales dashboard template"** (instant React artifact)
-   - "Show me recent production orders" (gets last 12 months automatically)
-   - "Show me ALL historical production orders" (agent uses include_all_data=True)
-   - "Find orders containing 'steel'"
+   - **"Show me the production dashboard"** → 7-day activity overview
+   - **"Show sales dashboard with production"** → Sales + linked manufacturing
+   - **"Find order 400139 and its production status"** → Complete cross-system view
+   - **"Show me RELEASED orders"** → Status filtering + production breakdown
+   - **"Get recent customer activity"** → Smart 12-month filtering
+   - **"Show ALL historical data"** → Agent uses override parameters
+   - **"Create production dashboard artifact"** → Instant React template
 
 ## Features
 
@@ -83,91 +95,91 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 
 ## Available Tools
 
-### 🎯 Management Dashboards (AI Agent Optimized)
-- **get_production_dashboard** - Consistent data: active work, pipeline, completions, issues (max 25 each)
-- **get_sales_dashboard** - Consistent data: new business, ready for production, delivery issues, changes (max 25 each)
+### 🎯 Smart Dashboards (AI Agent Optimized)
+- **get_production_dashboard** - 7-day production overview (active, pipeline, issues)
+- **get_sales_dashboard** - 7-day sales overview (new, ready, changes)
+- **get_sales_dashboard_with_production** - Sales + auto-linked production orders
+- **get_sales_orders_with_production_by_status** - Status filtering + production breakdown
 
-### 🎨 Dashboard Templates (Instant Artifacts)
-- **get_production_dashboard_template** - Ready React/TypeScript component for Claude artifacts
-- **get_sales_dashboard_template** - Ready React/TypeScript component for Claude artifacts
+### 🎨 Visual Templates (Instant Artifacts)
+- **get_production_dashboard_template** - Ready React component for Claude
+- **get_sales_dashboard_template** - Ready React component for Claude
 
-### Customer Orders (Unified System)
-- **get_customer_orders** - Main tool: 12-month recent data by default, quality filtered, newest first
-- **get_customer_order_details** - Detailed information about a specific order
-- **browse_customer_orders_paginated** - Interactive browsing with confirmation
-- **get_latest_orders_for_customer** - Recent orders for a specific customer
-- **check_customer_order_overdue** - Find overdue orders for a specific customer (efficient)
-- **get_orders_with_advanced_filter** - Complex multi-criteria filtering
-- **search_orders_advanced** - Advanced search with multiple options
-- **get_modified_orders** - Recently modified orders
-- **get_recent_orders** - Orders from last N days with unified system
-- **get_orders_by_item** - Find orders containing specific items
-- **get_customer_orders_bulk** - Bulk retrieval for 200+ records with array storage
+### 📋 Customer Orders (Unified System)
+- **get_customer_orders** - Main tool: 12-month smart filtering, quality filtered, newest first
+- **get_specific_sales_order_with_production** - Complete sales + production analysis
+- **get_customer_order_details** - Deep dive into specific order details
+- **get_latest_orders_for_customer** - Customer-specific recent activity
+- **search_orders_with_wildcards** - Universal wildcard search (ORDER123%)
+- **get_orders_by_item** - Find orders containing specific parts/materials
+- **get_customer_orders_bulk** - Bulk operations for large datasets
 
-### Production Orders (Unified System)
-- **get_production_orders** - Main tool: 12-month recent data by default, quality filtered, newest first
-- **get_released_production_orders** - Orders with RELEASED status (API native)
-- **get_in_progress_production_orders** - Orders with IN_PROGRESS status (API native)
-- **get_finished_production_orders** - Orders with FINISHED status (API native)
-- **check_production_order_overdue** - Find overdue orders matching search term (efficient)
-- **search_production_orders** - Search by OrderNo, OrderNoExt, or Description
-- **get_production_orders_bulk** - Bulk retrieval for 200+ records with array storage
+### 🏭 Production Orders (Unified System)
+- **get_production_orders** - Main tool: 12-month smart filtering, quality filtered, newest first
+- **get_production_orders_for_customer_order** - Sales → Production linking (uses % pattern)
+- **get_in_progress_production_orders** - Current manufacturing (Status: 60)
+- **get_released_production_orders** - Ready for production (Status: 30)
+- **get_finished_production_orders** - Completed manufacturing (Status: 90)
+- **search_production_orders** - Find by order number or description
 
-### Cross-System Integration
-- **get_production_orders_for_customer_order** - Link customer orders to production orders
-- **get_customer_order_for_production_order** - Link production orders back to customer orders
-- **search_orders_with_wildcards** - Wildcard search across both systems
+### 🔗 Cross-System Intelligence
+- **get_production_orders_for_customer_order** - Sales → Production (ORDER123 → ORDER123-001, ORDER123-002)
+- **get_customer_order_for_production_order** - Production → Sales (reverse lookup)
+- **search_orders_with_wildcards** - Universal search across both systems (ORDER% pattern)
+- **get_sales_dashboard_with_production** - Automatic cross-system dashboard
 
-## Example Queries
+## Agent Command Examples
 
-### 💬 Ask Claude These Questions:
+### 🎯 **Smart Dashboard Commands**
 
-**Management Dashboards & Visual Templates:**
-- 🏭 **`get_production_dashboard()`** → Consistent data format: active work, pipeline, completions, issues
-- 📊 **`get_sales_dashboard()`** → Consistent data format: new orders, ready for production, delivery issues, changes
-- 🎨 **`get_production_dashboard_template()`** → Ready React component for instant Claude artifacts
-- 🎨 **`get_sales_dashboard_template()`** → Ready React component for instant Claude artifacts
+**📊 Quick Status Overview:**
+- **"Show me the production dashboard"** → 7-day activity + issues
+- **"Show sales dashboard with production"** → Recent sales + linked manufacturing  
+- **"Get production status"** → Consistent 4-section management view
+- **"Create a production dashboard artifact"** → Instant React visual
 
-*Perfect for AI agents - consistent data + instant visual dashboard creation*
+### 🔍 **Intelligent Order Analysis**
 
-**Quick Status Checks:**
-- "Show me recent customer orders"
-- "What production orders are in progress?"
-- "Check for overdue orders for customer C123"
+**🎯 Specific Order Investigation:**
+- **"Show me order 400139"** → Sales order + all production orders (400139-001, 400139-002)
+- **"Find RELEASED orders and their production status"** → Status filter + manufacturing breakdown
+- **"Analyze customer ACME's recent activity"** → Customer-focused analysis
 
-**Searching & Filtering:**
-- "Find all orders for customer ACME Corp"
-- "Show me released production orders"
-- "Search for orders containing 'bracket'"
+**🔍 Smart Search & Filtering:**
+- **"Find orders containing 'steel'"** → Cross-system material search
+- **"Show me overdue production orders"** → Issue identification
+- **"Search for ORDER123 family"** → Wildcard search (ORDER123%)
 
-**Data Analysis:**
-- "Get customer orders for analysis" (auto-fetches 200 records)
-- "Get production orders from pages 10-15"
-- "Find overdue orders matching '238259'"
+### 🤖 **Agent Override Examples**
 
-**Cross-System Insights:**
-- "Which production orders belong to customer order ORDER123?"
-- "Find everything related to ORDER456"
-- "Link customer order CO789 to its production orders"
+**📈 Broader Data Access:**
+- **"Show me ALL historical production data"** → Agent uses `include_all_data=True`
+- **"Get customer orders from last 6 months"** → Agent uses `since_days=180`
+- **"Include template orders in the analysis"** → Agent uses `filter_quality=False`
 
-## Key Features
+*Perfect for AI agents - smart defaults with intelligent override capabilities*
 
-### Smart Data Access
-- **Auto-pagination**: Fetches up to 200 records (4 pages) by default
-- **API-efficient**: Uses proper TRUMPF API filters instead of client-side scanning
-- **Guidance**: Every function suggests next actions for more data
+## Agent Intelligence Features
 
-### Production Status Tools
-- **Status-specific**: Separate tools for RELEASED, IN_PROGRESS, and FINISHED orders
-- **Overdue detection**: Fixed logic with proper date format support
-- **Bulk operations**: Dedicated functions for large datasets
+### 🧠 **Smart Defaults**
+- **7-day focus**: Dashboards show recent activity for daily operations
+- **12-month filtering**: Main tools default to relevant recent data
+- **Quality filtering**: Automatically excludes template/test orders
+- **Override guidance**: Tells agents how to access broader data
 
-### Cross-System Integration
-- **Order linking**: Connect customer orders to production orders seamlessly
-- **Wildcard search**: Search across both systems with % patterns
-- **Efficient filtering**: All functions require proper constraints for performance
+### 🔗 **Cross-System Intelligence**
+- **Auto-linking**: Sales orders automatically find production orders (ORDER123 → ORDER123%)
+- **Bidirectional**: Production orders link back to sales orders
+- **Status mapping**: Converts between sales statuses (RELEASED) and production statuses (30)
+- **Wildcard patterns**: Universal % search across both systems
 
-*→ [See complete tools reference](docs/tools-reference.md) for detailed usage patterns*
+### 📊 **Agent-Optimized Design**
+- **Consistent structure**: Dashboards always return identical format
+- **Performance limits**: Max 25 records per dashboard section prevents overload
+- **Error handling**: Graceful failures with helpful guidance
+- **Action chaining**: Functions suggest next logical steps
+
+*→ [Complete Agent Commands](docs/tools-reference.md) | [Action Chains & Workflows](docs/advanced-usage.md)*
 
 ## Configuration
 

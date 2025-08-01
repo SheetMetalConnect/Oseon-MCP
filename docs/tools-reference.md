@@ -1,499 +1,502 @@
-# Tools Reference & Usage Patterns
+# Complete Agent Commands & Usage Guide
 
-Practical guide to all MCP tools and their optimal usage patterns for interacting with TRUMPF Oseon data.
+**The definitive reference for AI agents using TRUMPF Oseon MCP tools.**
 
-## 📊 Customer Orders Tools
+This guide shows agents exactly what commands are available, when to use them, and how to chain actions for optimal results. Each tool is designed with agent intelligence in mind - smart defaults, clear overrides, and automatic cross-system linking.
+
+## 🎯 **Agent Command Categories**
+
+| Category | Purpose | Best For |
+|----------|---------|----------|
+| **🏢 Smart Dashboards** | Consistent overviews | Daily status, management meetings |
+| **🔗 Enhanced Sales Tools** | Sales + Production linking | Cross-system analysis |
+| **📋 Customer Orders** | Sales order management | Customer service, order tracking |
+| **🏭 Production Orders** | Manufacturing management | Production planning, status checks |
+| **🔍 Universal Search** | Cross-system queries | Finding related data |
+| **📊 Bulk Operations** | Large datasets | Analysis, reporting |
+
+---
+
+## 🏢 Smart Dashboards (Agent-Optimized)
+
+*These commands provide consistent, structured data perfect for AI agents.*
+
+### `get_production_dashboard`
+**Purpose:** 7-day production overview with consistent 4-section structure
+**Agent Usage:** "Show me production status" / "How's production?"
+
+```python
+get_production_dashboard()
+```
+
+**Returns:**
+- ✅ Active Production (last 7 days)
+- ⏳ Production Pipeline (last 14 days)  
+- 🏆 Recent Completions (last 3 days)
+- ❌ Production Issues (1+ days overdue)
+
+**Agent Benefits:**
+- **Identical structure every time** - Perfect for consistent responses
+- **Limited data** - Max 25 records per section prevents overload
+- **Override guidance** - Shows how to get broader data
+
+### `get_sales_dashboard`
+**Purpose:** 7-day sales overview with consistent structure
+**Agent Usage:** "Show me sales status" / "How are sales?"
+
+```python
+get_sales_dashboard()
+```
+
+**Returns:**
+- 💰 New Business (last 7 days)
+- 🔄 Ready for Production (RELEASED status)
+- ⚠️ Delivery Issues (1+ days overdue)
+- 📝 Recent Changes (last 3 days)
+
+### `get_sales_dashboard_with_production` ⭐
+**Purpose:** Enhanced sales dashboard with automatic production order linking
+**Agent Usage:** "Show sales dashboard with production" / "Sales and manufacturing status"
+
+```python
+get_sales_dashboard_with_production()
+```
+
+**What it does automatically:**
+1. Gets recent sales orders (last 7 days)
+2. For each sales order, finds matching production orders using `%` pattern
+3. Counts production status breakdown (IN_PROGRESS, RELEASED, FINISHED)
+4. Shows comprehensive sales+production view
+
+**Example Output:**
+```
+📋 Sales Order: 400139
+   🏭 Production: 2 orders → 400139-001, 400139-002
+
+🏭 PRODUCTION SUMMARY:
+📊 Total: 15 orders | 🔄 In Progress: 5 | ⏳ Released: 8 | ✅ Finished: 2
+```
+
+### Dashboard Templates (Visual Artifacts)
+
+#### `get_production_dashboard_template`
+**Purpose:** Ready React/TypeScript component for Claude artifacts
+**Agent Usage:** "Create a production dashboard" / "Make a visual dashboard"
+
+#### `get_sales_dashboard_template`
+**Purpose:** Ready React/TypeScript component for Claude artifacts
+**Agent Usage:** "Create a sales dashboard" / "Make a sales visual"
+
+---
+
+## 🔗 Enhanced Sales Tools (Cross-System Intelligence)
+
+*These tools automatically link sales orders to production orders for comprehensive analysis.*
+
+### `get_sales_orders_with_production_by_status` ⭐
+**Purpose:** Filter sales orders by status and show linked production orders
+**Agent Usage:** "Show me RELEASED orders and their production status"
+
+```python
+get_sales_orders_with_production_by_status(
+    status="RELEASED",  # Sales order status
+    since_days=30,      # Look back period
+    max_results=15      # Limit for performance
+)
+```
+
+**Status Options:** `"RELEASED"`, `"DELIVERED"`, `"COMPLETED"`, `"PENDING"`
+
+**What it does:**
+1. Finds sales orders with specified status
+2. For each sales order, searches for production orders using `ORDER%` pattern
+3. Shows production status breakdown
+4. Perfect for "Show me all RELEASED orders and what's happening in production"
+
+### `get_specific_sales_order_with_production` ⭐
+**Purpose:** Deep dive into specific sales order with complete production details
+**Agent Usage:** "Tell me about order 400139" / "Analyze order 400139"
+
+```python
+get_specific_sales_order_with_production(
+    order_pattern="400139",    # Order number or pattern
+    include_details=True       # Show production operations
+)
+```
+
+**Pattern Examples:**
+- `"400139"` → Finds sales order 400139 + all production orders (400139-001, 400139-002)
+- `"400%"` → Finds all sales orders starting with 400 + their production orders
+- `"ORDER123"` → Specific order analysis
+
+**What it shows:**
+- Complete sales order details
+- All linked production orders
+- Production operations (if include_details=True)
+- Status of each production order
+
+---
+
+## 📋 Customer Orders Tools
 
 ### Core Retrieval Tools
 
-#### `get_customer_orders` (Unified System)
-**Purpose:** Main tool for customer orders - 12-month recent data by default, quality filtered, newest first
-**Best for:** Most queries - smart defaults with agent-friendly overrides
+#### `get_customer_orders` (Unified System) ⭐
+**Purpose:** Main customer orders tool with 12-month smart filtering
+**Agent Usage:** "Show me recent customer orders" / "Get customer order data"
 
 ```python
-# Default: Recent 12-month data, quality filtered, newest first
-get_customer_orders()
+# Smart defaults - perfect for most agent queries
+get_customer_orders()  # 12-month recent, quality filtered, newest first
 
-# With filtering (still uses 12-month default)
+# With filtering (maintains smart defaults)
 get_customer_orders(
-    status="RELEASED", 
-    customer_no="C123",
-    search_term="steel"
+    status="RELEASED",           # Filter by status
+    customer_no="C123",         # Specific customer
+    search_term="steel"         # Search term
 )
 
-# Agent overrides for different user needs
-get_customer_orders(include_all_data=True)  # All historical data
-get_customer_orders(since_date="2023-01-01T00:00:00")  # Custom date
-get_customer_orders(filter_quality=False)  # Include template orders
+# Agent overrides (for follow-up prompts)
+get_customer_orders(include_all_data=True)              # "Show ALL data"
+get_customer_orders(since_date="2023-01-01T00:00:00")   # "Since January 2023"
+get_customer_orders(filter_quality=False)              # "Include test orders"
+get_customer_orders(since_days=30)                     # "Last 30 days"
 ```
 
-**Usage Notes:**
-- **Unified System:** Consistent 12-month recent data filtering by default
-- **Agent-Friendly:** Override parameters for follow-up prompts
-- **Quality Filtered:** Automatically excludes template/test orders (override available)
+**Agent Intelligence:**
+- **Smart Default:** 12-month recent data (not all historical)
+- **Quality Filtering:** Excludes template/test orders automatically
+- **Override Guidance:** Response tells agent how to get broader data
+- **Consistent Sorting:** Always newest first
+
+**When to use overrides:**
+- User says "ALL data" → `include_all_data=True`
+- User specifies timeframe → `since_date="YYYY-MM-DD"`
+- User wants "everything" → `filter_quality=False`
 
 #### `get_customer_order_details`
-**Purpose:** Retrieve complete order information including positions, pricing, operations
-**Best for:** Deep dives into specific orders, customer service inquiries
+**Purpose:** Complete order breakdown with positions, pricing, operations
+**Agent Usage:** "Get details for order ORDER123" / "Tell me more about this order"
 
 ```python
 get_customer_order_details(customer_order_no="ORDER123")
 ```
 
-**Agentic Usage:**
-- **Follow-up tool:** After finding orders with search tools
-- **Validation step:** Confirm order details before making business decisions
-- **Data enrichment:** Get complete context for analysis workflows
+**Agent Workflow:**
+1. **Find orders** with search tools
+2. **Get details** for specific orders
+3. **Validate information** before making recommendations
 
-#### `get_customer_orders_bulk`
-**Purpose:** For 200+ records with structured array storage
-**Best for:** Large dataset analysis, agent data collection
-
-```python
-# Get 250 orders (5 pages of 50 each)
-get_customer_orders_bulk(
-    size=50, 
-    start_page=1, 
-    num_pages=5,
-    status="COMPLETED"
-)
-```
-
-**Usage Notes:**
-- **Large datasets:** Use for 200+ records when agent needs array storage
-- **Explicit operation:** Requires specific page ranges
-- **Performance:** Optimized for bulk data operations
-
-### Navigation & Browsing Tools
-
-#### `browse_customer_orders_paginated`
-**Purpose:** Interactive browsing with confirmation prompts
-**Best for:** Exploratory data analysis, manual review workflows
-
-```python
-browse_customer_orders_paginated(max_pages=5, size=25)
-```
+**Shows:**
+- Complete order information
+- All positions and items
+- Pricing breakdown
+- Customer details
+- Order status and dates
 
 ### Customer-Specific Tools
 
 #### `get_latest_orders_for_customer`
-**Purpose:** Most recent orders for a specific customer
-**Best for:** Customer relationship management
+**Purpose:** Customer-specific recent activity
+**Agent Usage:** "Show me recent orders for customer ACME"
 
 ```python
-get_latest_orders_for_customer(customer_no="C123", limit=10)
-```
-
-#### `check_customer_order_overdue`
-**Purpose:** Find overdue orders for a specific customer (efficient)
-**Best for:** Customer-specific overdue checks
-
-```python
-check_customer_order_overdue(
-    customer_no="C123", 
-    days_overdue=7
+get_latest_orders_for_customer(
+    customer_no="C123",
+    limit=10
 )
-```
-
-### Advanced Filtering Tools
-
-#### `get_orders_with_advanced_filter`
-**Purpose:** Complex multi-criteria filtering
-**Best for:** Sophisticated queries with multiple conditions
-
-```python
-get_orders_with_advanced_filter(
-    date_from="2024-01-01",
-    date_to="2024-12-31",
-    status="RELEASED",
-    customer_no="C123"
-)
-```
-
-### Time-Based Tools
-
-#### `get_newest_orders`
-**Purpose:** Get newest orders from recent days
-**Best for:** Daily monitoring, recent activity checks
-
-```python
-get_newest_orders(max_results=25, since_days=7)
-```
-
-#### `get_released_orders`
-**Purpose:** Get orders with RELEASED status from timeframe
-**Best for:** Production planning, released order tracking
-
-```python
-get_released_orders(max_results=25, since_days=30)
-```
-
-#### `get_completed_orders`
-**Purpose:** Get orders with COMPLETED status from timeframe
-**Best for:** Performance monitoring, completion tracking
-
-```python
-get_completed_orders(max_results=25, since_days=30)
-```
-
-#### `get_modified_orders`
-**Purpose:** Get recently modified orders
-**Best for:** Change tracking, update monitoring
-
-```python
-get_modified_orders(days=7, max_results=25)
-```
-
-#### `get_recent_orders`
-**Purpose:** Time-based filtering for recent orders
-**Best for:** Daily operations, recent activity monitoring
-
-```python
-get_recent_orders(days=30, max_results=25)
-```
-
-### Search & Discovery Tools
-
-#### `search_orders_advanced`
-**Purpose:** Advanced search with multiple criteria
-**Best for:** Complex searches with detailed filtering
-
-```python
-search_orders_advanced(search_term="PROJECT", max_results=50)
 ```
 
 #### `get_orders_by_item`
-**Purpose:** Find orders containing specific items or descriptions
-**Best for:** Inventory management, product-specific analysis
+**Purpose:** Find orders containing specific items or materials
+**Agent Usage:** "Find orders with steel brackets" / "What orders use part 12345?"
 
 ```python
-get_orders_by_item(item_description="steel bracket", max_results=25)
+get_orders_by_item(
+    item_no="PART123",
+    max_results=50,
+    status_category="completed"
+)
 ```
 
-## 🔧 Production Orders Tools
+---
 
-### Core Production Tools
+## 🏭 Production Orders Tools
 
-#### `get_production_orders` (Unified System)
-**Purpose:** Main tool for production orders - 12-month recent data by default, quality filtered, newest first
-**Best for:** Most production queries with intelligent defaults and agent overrides
+### `get_production_orders` (Unified System) ⭐
+**Purpose:** Main production orders tool with 12-month smart filtering
+**Agent Usage:** "Show me production orders" / "Get production data"
 
 ```python
-# Default: Recent 12-month data, quality filtered, newest first
-get_production_orders()
+# Smart defaults
+get_production_orders()  # 12-month recent, quality filtered, newest first
 
-# With filtering (still uses 12-month default)
+# With filtering
 get_production_orders(
-    search_term="ORDER123%", 
-    status=60  # Active production
+    status=60,                    # IN_PROGRESS status
+    search_term="ORDER123%"       # Wildcard search
 )
 
-# Agent overrides for different user needs
-get_production_orders(include_all_data=True)  # All historical data
-get_production_orders(filter_quality=False)  # Include template orders
+# Agent overrides
+get_production_orders(include_all_data=True)          # "Show ALL data"
+get_production_orders(filter_quality=False)          # "Include templates"
+get_production_orders(since_days=7)                  # "Last week only"
+```
+
+**Status Values:**
+- `30` = RELEASED (ready for production)
+- `60` = IN_PROGRESS (currently manufacturing)
+- `90` = FINISHED (completed)
+
+### Status-Specific Tools (API Optimized)
+
+#### `get_in_progress_production_orders`
+**Purpose:** Orders currently being manufactured (Status: 60)
+**Agent Usage:** "What's in progress?" / "Show active production"
+
+```python
+get_in_progress_production_orders(
+    max_results=50,
+    since_days=7,              # Optional time filter
+    search_term="ORDER123%"    # Optional search
+)
 ```
 
 #### `get_released_production_orders`
-**Purpose:** Production orders with RELEASED status (API native)
-**Best for:** Orders released for production but not yet started
+**Purpose:** Orders ready to start production (Status: 30)
+**Agent Usage:** "What's ready for production?" / "Show released orders"
+
+#### `get_finished_production_orders`
+**Purpose:** Recently completed orders (Status: 90)
+**Agent Usage:** "What was completed recently?" / "Show finished orders"
+
+---
+
+## 🔍 Universal Search & Cross-System Tools
+
+### `search_orders_with_wildcards` ⭐
+**Purpose:** Universal search across both sales and production systems
+**Agent Usage:** "Find everything related to ORDER123" / "Search for steel orders"
 
 ```python
-get_released_production_orders(
-    since_days=30,
-    search_term="ORDER123%"
+search_orders_with_wildcards(
+    search_pattern="ORDER123%",     # Wildcard pattern
+    search_in="both",              # "customer", "production", or "both"
+    size=25                        # Results per system
+)
+```
+
+**Pattern Examples:**
+- `"ORDER123%"` → All orders starting with ORDER123
+- `"%steel%"` → All orders containing "steel"
+- `"400%"` → All 400-series orders
+
+**Perfect for:**
+- Finding order families (ORDER123-001, ORDER123-002, etc.)
+- Material searches ("%bracket%", "%steel%")
+- Customer prefix searches ("%ACME%")
+
+### Cross-System Linking Tools
+
+#### `get_production_orders_for_customer_order` ⭐
+**Purpose:** Find all production orders for a specific sales order
+**Agent Usage:** "Show production orders for sales order 400139"
+
+```python
+get_production_orders_for_customer_order(
+    customer_order_no="400139",
+    size=50
+)
+```
+
+**How it works:**
+1. Takes sales order number (e.g., "400139")
+2. Searches production orders using pattern "400139%"
+3. Finds all related production orders (400139-001, 400139-002, etc.)
+4. Shows detailed production information
+
+#### `get_customer_order_for_production_order`
+**Purpose:** Reverse lookup - find sales order from production order
+**Agent Usage:** "What sales order does 400139-001 belong to?"
+
+```python
+get_customer_order_for_production_order(
+    production_order_no="400139-001"
+)
+```
+
+---
+
+## 🚨 Issue Detection Tools
+
+### `check_customer_order_overdue`
+**Purpose:** Find overdue customer orders efficiently
+**Agent Usage:** "Check for overdue orders" / "Any delivery issues?"
+
+```python
+check_customer_order_overdue(
+    customer_no="C123",     # Optional: specific customer
+    days_overdue=7          # How many days overdue
+)
+```
+
+### `check_production_order_overdue`
+**Purpose:** Find overdue production orders with search constraints
+**Agent Usage:** "Check for production delays" / "Any overdue manufacturing?"
+
+```python
+check_production_order_overdue(
+    search_term="ORDER123%",  # Required: search constraint
+    days_overdue=7            # How many days overdue
+)
+```
+
+---
+
+## 📊 Bulk Operations & Advanced Tools
+
+### Bulk Data Tools
+
+#### `get_customer_orders_bulk`
+**Purpose:** Large dataset operations (200+ records)
+**Agent Usage:** When user needs extensive data analysis
+
+```python
+get_customer_orders_bulk(
+    size=50,           # Records per page
+    start_page=1,      # Starting page
+    num_pages=5,       # Number of pages to fetch
+    status="RELEASED"  # Optional filtering
 )
 ```
 
 #### `get_production_orders_bulk`
-**Purpose:** Bulk retrieval of production orders
-**Best for:** Large dataset analysis, reporting
+**Purpose:** Large production dataset operations
+**Agent Usage:** For comprehensive production analysis
 
-```python
-get_production_orders_bulk(size=50, start_page=10, num_pages=5)
-```
+---
 
-### Specialized Production Queries
+## 🎯 Agent Command Selection Guide
 
-#### `check_production_order_overdue`
-**Purpose:** Find overdue production orders matching search term (efficient)
-**Best for:** Targeted overdue checks with search constraints
-
-```python
-check_production_order_overdue(
-    search_term="ORDER123%", 
-    days_overdue=7
-)
-```
-
-#### `get_in_progress_production_orders`
-**Purpose:** Production orders with IN_PROGRESS status (API native)
-**Best for:** Orders currently being manufactured
-
-```python
-get_in_progress_production_orders(
-    since_days=30,
-    search_term="PROJECT%"
-)
-```
-
-#### `search_production_orders`
-**Purpose:** Search by OrderNo, OrderNoExt, or Description
-**Best for:** Specific order lookup
-
-```python
-search_production_orders(search_term="ORDER123%")
-```
-
-#### `get_finished_production_orders`
-**Purpose:** Production orders with FINISHED status (API native)
-**Best for:** Recently completed manufacturing orders
-
-```python
-get_finished_production_orders(
-    since_days=7,
-    search_term="ORDER%"
-)
-```
-
-### Cross-System Integration Tools
-
-#### `get_customer_order_for_production_order`
-**Purpose:** Link production orders back to customer orders
-**Best for:** Understanding customer context for production orders
-
-```python
-get_customer_order_for_production_order(production_order_no="ORDER123-001")
-```
-
-#### `get_next_page_production_orders`
-**Purpose:** Continue pagination for production orders
-**Best for:** Sequential processing workflows
-
-## 🔄 Common Usage Patterns
-
-### Pattern 1: Customer Inquiry
-
+### For Status Overviews
 ```mermaid
 flowchart TD
-    A["Customer inquiry about ORDER123"] --> B["search_orders_with_wildcards('ORDER123%')"]
-    B --> C["Found customer order + production orders"]
-    C --> D["get_customer_order_details('ORDER123')"]
-    D --> E["get_production_orders_for_customer_order('ORDER123')"]
-    E --> F["get_overdue_production_orders()"]
-    F --> G["Comprehensive status report"]
+    A["User asks about status"] --> B{"Production or Sales?"}
+    B -->|Production| C["get_production_dashboard()"]
+    B -->|Sales| D["get_sales_dashboard()"]
+    B -->|Both| E["get_sales_dashboard_with_production()"]
     
-    style A fill:#ffebee
-    style G fill:#e8f5e8
+    C --> F["7-day production overview"]
+    D --> G["7-day sales overview"]
+    E --> H["Sales + linked production"]
 ```
 
-**Tool Sequence:**
-1. `search_orders_with_wildcards("ORDER123%")` - Find all related orders
-2. `get_customer_order_details("ORDER123")` - Get customer order specifics
-3. `get_production_orders_for_customer_order("ORDER123")` - Link to production
-4. `get_overdue_production_orders()` - Check for delays
-5. Analyze and provide comprehensive status
-
-### Pattern 2: Production Status Check
-
+### For Specific Orders
 ```mermaid
 flowchart TD
-    A["How's production?"] --> B["get_production_status_overview()"]
-    B --> C["get_active_production_orders()"]
-    C --> D["get_overdue_production_orders()"]
-    D --> E["For each overdue order"]
-    E --> F["get_customer_order_for_production_order()"]
-    F --> G["Impact assessment & recommendations"]
+    A["User mentions specific order"] --> B{"Know exact number?"}
+    B -->|Yes| C["get_specific_sales_order_with_production()"]
+    B -->|No| D["search_orders_with_wildcards()"]
     
-    style A fill:#fff3e0
-    style G fill:#e8f5e8
+    C --> E["Complete sales + production view"]
+    D --> F["Find matching orders"]
+    F --> C
 ```
 
-**Tool Sequence:**
-1. `get_production_status_overview()` - High-level health check
-2. `get_active_production_orders()` - Current active work
-3. `get_overdue_production_orders()` - Identify problems
-4. `get_customer_order_for_production_order()` - Customer impact analysis
-5. Synthesize findings with recommendations
-
-### Pattern 3: Data Analysis
-
+### For Status Filtering
 ```mermaid
 flowchart TD
-    A["Need data for analysis"] --> B["get_production_status_overview()"]
-    B --> C["Determine scope & filters"]
-    C --> D["get_production_orders_bulk()"]
-    D --> E["get_customer_orders_bulk()"]
-    E --> F["Cross-reference data"]
-    F --> G["Statistical analysis"]
+    A["User wants specific status"] --> B{"Sales or Production?"}
+    B -->|Sales| C["get_sales_orders_with_production_by_status()"]
+    B -->|Production| D{"Which status?"}
     
-    style A fill:#e3f2fd
-    style G fill:#e8f5e8
+    D -->|"In Progress"| E["get_in_progress_production_orders()"]
+    D -->|"Released"| F["get_released_production_orders()"]
+    D -->|"Finished"| G["get_finished_production_orders()"]
 ```
 
-**Tool Sequence:**
-1. `get_production_status_overview()` - Understand data scope
-2. `get_production_orders_bulk(num_pages=10)` - Collect production data
-3. `get_customer_orders_bulk(num_pages=5)` - Collect customer data
-4. Cross-reference and analyze patterns
-5. Generate insights and reports
+---
 
-### Pattern 4: Customer Review
+## 💡 Agent Best Practices
 
-```mermaid
-flowchart TD
-    A["Review customer ACME Corp"] --> B["get_orders_by_customer('ACME%')"]
-    B --> C["get_latest_orders_for_customer()"]
-    C --> D["For each recent order"]
-    D --> E["get_production_orders_for_customer_order()"]
-    E --> F["get_overdue_orders()"]
-    F --> G["Account health report"]
-    
-    style A fill:#f3e5f5
-    style G fill:#e8f5e8
-```
-
-**Tool Sequence:**
-1. `get_orders_by_customer("ACME%")` - All customer orders
-2. `get_latest_orders_for_customer("ACME")` - Recent activity
-3. `get_production_orders_for_customer_order()` - Production status
-4. `get_overdue_orders()` - Risk assessment
-5. Compile comprehensive account review
-
-### Pattern 5: Overdue Management
-
-```mermaid
-flowchart TD
-    A["Daily exception review"] --> B["get_overdue_orders()"]
-    B --> C["get_overdue_production_orders()"]
-    C --> D["For each overdue item"]
-    D --> E["get_customer_order_details()"]
-    E --> F["get_production_orders_for_customer_order()"]
-    F --> G["Priority matrix & action plan"]
-    
-    style A fill:#ffebee
-    style G fill:#e8f5e8
-```
-
-**Tool Sequence:**
-1. `get_overdue_orders()` - Customer delivery delays
-2. `get_overdue_production_orders()` - Production delays
-3. `get_customer_order_details()` - Impact assessment
-4. `get_production_orders_for_customer_order()` - Root cause analysis
-5. Create prioritized action plan
-
-## 💡 Best Practices
-
-### 1. Start Broad, Then Narrow
+### 1. **Start with Smart Defaults**
 ```python
-# ✅ Good: Overview first
-get_production_status_overview()
-→ get_overdue_production_orders() 
-→ get_customer_order_for_production_order(specific_order)
+# ✅ Good: Let the unified system handle filtering
+get_customer_orders()  # Gets relevant recent data
 
-# ❌ Avoid: Jumping to specifics
-get_customer_order_details("ORDER123")  # Without context
+# ❌ Avoid: Over-specifying initially
+get_customer_orders(since_date="2020-01-01", filter_quality=False)  # Too broad
 ```
 
-### 2. Use Cross-System Linking
+### 2. **Use Cross-System Intelligence**
 ```python
-# ✅ Good: Connect related data
-search_orders_with_wildcards("PROJECT2024%")
-→ get_production_orders_for_customer_order(found_order)
-→ get_customer_order_details(customer_order)
+# ✅ Good: Leverage automatic linking
+get_sales_dashboard_with_production()  # Shows both sides automatically
 
-# ❌ Avoid: Isolated queries
-get_customer_orders() + get_production_orders()  # No linking
+# ❌ Avoid: Manual linking
+get_sales_dashboard() + get_production_dashboard()  # Disconnected data
 ```
 
-### 3. Layer Filters Progressively
+### 3. **Follow Agent Override Guidance**
 ```python
-# ✅ Good: Progressive filtering
-get_recent_orders(days=30)
-→ get_orders_by_status("RELEASED") 
-→ get_orders_by_customer("ACME%")
-
-# ❌ Avoid: Over-filtering initially
-get_orders_with_advanced_filter(too_many_criteria)  # May return empty
+# When response says "FOR MORE DATA: Use get_customer_orders(since_days=30)"
+# Agent should use the suggested override for follow-up queries
 ```
 
-### 4. Handle Bulk Operations Strategically
+### 4. **Chain Commands Logically**
 ```python
-# ✅ Good: Bulk for analysis
-get_production_status_overview()  # Understand scope
-→ get_production_orders_bulk(appropriate_pages)
-
-# ❌ Avoid: Bulk without purpose
-get_customer_orders_bulk(num_pages=20)  # Without clear need
+# ✅ Good workflow:
+# 1. search_orders_with_wildcards("ORDER123%")  # Find related orders
+# 2. get_specific_sales_order_with_production("ORDER123")  # Deep dive
+# 3. get_customer_order_details("ORDER123")  # Full details if needed
 ```
 
-### 5. Validate and Enrich Data
+---
+
+## ⚡ Performance Guidelines
+
+### Command Response Times
+| Command Type | Expected Speed | Records Returned |
+|--------------|----------------|------------------|
+| **Dashboards** | < 3 seconds | 25 per section |
+| **Main Tools** | < 2 seconds | Up to 200 (auto-paginated) |
+| **Bulk Operations** | 5-10 seconds | 200+ records |
+| **Cross-System** | 3-5 seconds | Depends on matches |
+
+### When to Use Bulk vs Standard
+- **Standard tools** (get_customer_orders, get_production_orders): Up to 200 records
+- **Bulk tools** (get_customer_orders_bulk): 200+ records for analysis
+- **Dashboard tools**: Fixed 25 records per section for consistency
+
+---
+
+## 🔄 Common Agent Workflows
+
+### 1. **Daily Status Check**
 ```python
-# ✅ Good: Validation workflow
-search_customer_orders("ORDER123")
-→ get_customer_order_details("ORDER123")  # Validate exists
-→ get_production_orders_for_customer_order("ORDER123")  # Enrich
-
-# ❌ Avoid: Assuming data exists
-get_customer_order_details("ORDER123")  # May fail if not found
+# User: "How's everything looking today?"
+get_production_dashboard()           # Production overview
+get_sales_dashboard_with_production() # Sales + manufacturing view
 ```
 
-## ⚡ Performance Tips
-
-### Parallel Tool Execution
-When tools don't depend on each other, execute in parallel:
-
+### 2. **Order Investigation**
 ```python
-# ✅ Parallel execution
-Parallel:
-  - get_overdue_orders()
-  - get_overdue_production_orders()
-  - get_recent_orders(days=7)
-
-Then process results together
+# User: "Tell me about order 400139"
+get_specific_sales_order_with_production("400139")  # Complete analysis
+get_customer_order_details("400139")                # Full sales details
 ```
 
-### Smart Caching
-Cache frequently accessed data across tool calls:
-
+### 3. **Status Analysis**
 ```python
-# ✅ Cache customer details
-customer_details = get_customer_order_details("ORDER123")
-# Use cached data for subsequent analysis
+# User: "Show me all RELEASED orders and their production status"
+get_sales_orders_with_production_by_status("RELEASED", since_days=30)
 ```
 
-### Incremental Data Building
-Build datasets incrementally rather than large bulk operations:
-
+### 4. **Issue Detection**
 ```python
-# ✅ Incremental approach
-page_1 = get_customer_orders(page=1, size=50)
-# Analyze first batch
-page_2 = get_customer_orders(page=2, size=50)
-# Continue based on findings
+# User: "Any problems I should know about?"
+check_customer_order_overdue(days_overdue=3)        # Delivery issues
+check_production_order_overdue("ORDER%", days_overdue=1)  # Production delays
 ```
 
-## 🎯 Tool Selection Guide
-
-```mermaid
-flowchart TD
-    A["Need customer data?"] -->|Yes| B["Know specific order?"]
-    A -->|No| C["Need production data?"]
-    
-    B -->|Yes| D["get_customer_order_details()"]
-    B -->|No| E["Need recent data?"]
-    
-    E -->|Yes| F["get_recent_orders()"]
-    E -->|No| G["get_customer_orders()"]
-    
-    C -->|Yes| H["Overview needed?"]
-    H -->|Yes| I["get_production_status_overview()"]
-    H -->|No| J["get_production_orders()"]
-    
-    style D fill:#e8f5e8
-    style F fill:#e8f5e8
-    style G fill:#e8f5e8
-    style I fill:#e8f5e8
-    style J fill:#e8f5e8
-```
-
-This reference helps you choose the right tools and build effective workflows for your Oseon data needs.
+This reference ensures agents can translate any user request into the optimal tool combination for accurate, comprehensive results.

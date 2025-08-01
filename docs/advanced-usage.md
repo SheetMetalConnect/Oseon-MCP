@@ -1,31 +1,98 @@
-# Advanced Usage Guide
+# Advanced Usage: Action Chains & Workflows
 
-Practical guide for working with large datasets, bulk operations, and performance optimization.
+**Agent-focused guide for chaining commands and optimizing workflows.**
 
-## Bulk Data Retrieval
+This guide shows AI agents how to translate user requests into optimal command sequences, leverage cross-system intelligence, and handle complex scenarios efficiently.
 
-### Understanding Pagination Strategies
+## 🔗 Smart Action Chains
+
+### Chain 1: Complete Order Analysis
+**User Request:** *"Tell me everything about order 400139"*
 
 ```mermaid
-graph LR
-    A["🎯 Data Need"] --> B{"Amount Required"}
+flowchart TD
+    A["User: Tell me about order 400139"] --> B["get_specific_sales_order_with_production('400139')"]
+    B --> C["Sales order + production orders found"]
+    C --> D["get_customer_order_details('400139')"]
+    D --> E["Complete customer order breakdown"]
+    E --> F["check_customer_order_overdue(customer_no='customer_from_order')"]
+    F --> G["Comprehensive analysis with timeline"]
     
-    B -->|"Up to 200 records"| C["📄 Auto-pagination<br/>get_customer_orders()"]
-    B -->|"200+ records"| D["📚 Bulk Operations<br/>get_customer_orders_bulk()"]
-    B -->|"Specific status"| E["⚡ Status-specific<br/>get_released_production_orders()"]
-    
-    C --> F["✅ Up to 200 records (4 pages)"]
-    D --> G["✅ Custom page ranges"]
-    E --> H["✅ API-native filtering"]
+    style A fill:#ffebee
+    style G fill:#e8f5e8
 ```
 
-### Bulk Operations Examples
+**Command Sequence:**
+```python
+# Step 1: Get overview with automatic production linking
+result1 = get_specific_sales_order_with_production("400139", include_details=True)
+
+# Step 2: Get detailed sales order information  
+result2 = get_customer_order_details("400139")
+
+# Step 3: Check for any delivery issues (optional)
+result3 = check_customer_order_overdue(customer_no="extracted_from_step2")
+
+# Agent synthesizes: Sales details + Production status + Timeline + Issues
+```
+
+### Chain 2: Cross-System Sales Analysis
+**User Request:** *"Show me sales performance with production insights"*
+
+```mermaid
+flowchart TD
+    A["User: Sales performance + production"] --> B["get_sales_dashboard_with_production()"]
+    B --> C["Sales orders + linked production found"]
+    C --> D["get_sales_orders_with_production_by_status('RELEASED')"]
+    D --> E["RELEASED orders + production status"]
+    E --> F["Complete sales + production view"]
+    
+    style A fill:#f3e5f5
+    style F fill:#e8f5e8
+```
+
+## 🎯 User Request Translation Patterns
+
+### Pattern 1: General Status Queries
+
+| User Says | Agent Interprets | Command Chain |
+|-----------|------------------|---------------|
+| "How's production?" | Daily production overview | `get_production_dashboard()` |
+| "How are sales?" | Daily sales overview | `get_sales_dashboard()` |
+| "How's the business?" | Complete overview | `get_sales_dashboard_with_production()` |
+| "Any issues?" | Problem detection | Dashboard → Overdue checks |
+
+### Pattern 2: Specific Order Queries
+
+| User Says | Agent Interprets | Command Chain |
+|-----------|------------------|---------------|
+| "Tell me about order 400139" | Complete order analysis | `get_specific_sales_order_with_production()` → details |
+| "Find order 400139" | Search and analyze | `search_orders_with_wildcards()` → specific analysis |
+| "What's the status of 400139?" | Current status check | Specific analysis → production status |
+| "Where is order 400139 in production?" | Production focus | `get_production_orders_for_customer_order()` |
+
+### Pattern 3: Status Filtering Requests
+
+| User Says | Agent Interprets | Command Chain |
+|-----------|------------------|---------------|
+| "Show me RELEASED orders" | Status filtering + production | `get_sales_orders_with_production_by_status("RELEASED")` |
+| "What's in production?" | Active manufacturing | `get_in_progress_production_orders()` |
+| "What's ready to ship?" | Completed orders | `get_finished_production_orders()` |
+| "Any overdue orders?" | Issue detection | Overdue check functions |
+
+## 🔄 Enhanced Sales + Production Workflows
+
+### New Enhanced Tools Usage
 
 **Auto-pagination (recommended):**
-```bash
+```python
 # Gets recent 12-month data automatically (up to 200 records, quality filtered)
 get_customer_orders(status="RELEASED")
 get_production_orders(search_term="ORDER123%")
+
+# Enhanced sales with automatic production linking
+get_sales_dashboard_with_production()  # 7-day sales + linked production
+get_sales_orders_with_production_by_status("RELEASED")  # Status filter + production
 
 # Override for all historical data
 get_production_orders(include_all_data=True)
