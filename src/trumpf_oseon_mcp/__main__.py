@@ -47,6 +47,149 @@ OSEON_CONFIG = get_config()
 # Set to False for production use with real customer data
 DEMO_MODE = False
 
+# ================================================================================================
+# UNIFIED SYSTEM UTILITIES - CONSISTENT DATA FILTERING AND BEHAVIOR
+# ================================================================================================
+
+def get_default_since_date(months_back: int = 12) -> str:
+    """
+    Get dynamic default since_date for filtering recent records.
+    Returns current time minus specified months (default: 12 months).
+    
+    Args:
+        months_back: Number of months to go back from current date (default: 12)
+        
+    Returns:
+        ISO formatted date string (e.g., "2024-01-01T00:00:00")
+    """
+    current_date = datetime.now()
+    # Calculate months back by subtracting years and months
+    year = current_date.year
+    month = current_date.month - months_back
+    
+    # Handle year rollover
+    while month <= 0:
+        month += 12
+        year -= 1
+    
+    # Create date at beginning of that month
+    since_date = datetime(year, month, 1)
+    return since_date.strftime("%Y-%m-%dT00:00:00")
+
+def is_quality_production_data(order: Dict[str, Any]) -> bool:
+    """
+    Check if order represents real production data (not template/test).
+    
+    Args:
+        order: Order dictionary from API
+        
+    Returns:
+        bool: True if order is quality production data
+    """
+    # Filter out template orders with impossible future dates
+    due_date_str = order.get("dueDate", "")
+    if due_date_str:
+        try:
+            # Check for year 5000+ dates (template orders)
+            if "5000" in due_date_str or any(year in due_date_str for year in ["5001", "5999", "9999"]):
+                return False
+            
+            # Parse date and check if unreasonably far in future (>5 years)
+            for date_format in ["%d.%m.%Y %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+                try:
+                    due_date = datetime.strptime(due_date_str, date_format)
+                    years_ahead = (due_date - datetime.now()).days / 365
+                    if years_ahead > 5:
+                        return False
+                    break
+                except ValueError:
+                    continue
+        except (ValueError, TypeError):
+            pass
+    
+    # Filter out test orders by order number and description patterns
+    order_no = order.get("orderNo", "").lower()
+    description = order.get("description", "").lower()
+    
+    test_patterns = ["test", "template", "demo", "example", "sandbox"]
+    
+    for pattern in test_patterns:
+        if pattern in order_no or pattern in description:
+            return False
+    
+    # Filter out orders with "None" customer names (often test data)
+    customer_name = order.get("customerName", "")
+    if customer_name in ["None", "", "N/A", "TEST", "TEMPLATE"]:
+        return False
+    
+    return True
+
+def get_unified_api_params(
+    size: int = 50,
+    page: int = 1,
+    auto_filter_recent: bool = True,
+    since_date: Optional[str] = None,
+    status: Optional[str] = None,
+    search_term: Optional[str] = None,
+    customer_no: Optional[str] = None,
+    item_no: Optional[str] = None,
+    include_all_data: bool = False
+) -> dict:
+    """
+    Get unified API parameters with consistent defaults across all commands.
+    
+    Args:
+        size: Number of records per page (max 50)
+        page: Page number (1-based, converted to 0-based)
+        auto_filter_recent: If True, apply 12-month default filter (default: True)
+        since_date: Optional specific date filter (overrides auto_filter_recent)
+        status: Optional status filter
+        search_term: Optional search term
+        customer_no: Optional customer number filter
+        item_no: Optional item number filter
+        include_all_data: If True, disable recent filtering (default: False)
+        
+    Returns:
+        Dictionary of unified API parameters
+    """
+    params = {
+        "size": min(size, 50),
+        "page": max(0, page - 1),  # Convert to 0-based
+        "sortBy": "modificationDate",
+        "sortOrder": "desc"  # Always newest first
+    }
+    
+    # Apply recent data filtering by default
+    if not include_all_data:
+        if since_date:
+            params["since"] = since_date
+        elif auto_filter_recent:
+            params["since"] = get_default_since_date()
+    
+    # Add optional filters
+    if status:
+        params["status"] = str(status).upper()
+    if search_term:
+        params["searchBy"] = search_term
+    if customer_no:
+        params["customerNo"] = customer_no
+    if item_no:
+        params["itemNo"] = item_no
+        
+    return params
+
+def filter_quality_orders(orders: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Filter orders to include only quality production data.
+    
+    Args:
+        orders: List of order dictionaries
+        
+    Returns:
+        Filtered list containing only quality production orders
+    """
+    return [order for order in orders if is_quality_production_data(order)]
+
 def sanitize_for_demo(data):
     """
     Sanitize customer data for demo purposes.
@@ -417,27 +560,33 @@ async def get_customer_orders(
     since_date: Optional[str] = None,
     search_term: Optional[str] = None,
     item_no: Optional[str] = None,
-    get_latest: bool = True,
-    auto_paginate: bool = True
+    auto_filter_recent: bool = True,
+    auto_paginate: bool = True,
+    include_all_data: bool = False,
+    filter_quality: bool = True
 ) -> str:
     """
-    Get customer orders with comprehensive filtering options.
-    Orders are sorted by modification date (newest first).
-    Automatically fetches up to 200 records (4 pages) by default.
+    Get customer orders with unified filtering and consistent behavior.
+    
+    🔄 UNIFIED SYSTEM: Always returns recent, relevant data by default (last 12 months).
+    📊 QUALITY FILTERING: Automatically excludes template and test orders.
+    🆕 CONSISTENT SORTING: Always sorted by modification date (newest first).
     
     Args:
         size: Number of orders per page (default: 50, API max)
         page: Page number (1-based, default: 1)
         status: Filter by order status (e.g., 'COMPLETED', 'INVOICED', 'INCOMPLETE')
         customer_no: Filter by exact customer number
-        since_date: Filter orders modified since this date (ISO format: 2024-01-01T00:00:00)
+        since_date: Optional ISO 8601 date filter (overrides auto_filter_recent if provided)
         search_term: Search in order numbers and external references (supports wildcards with %)
         item_no: Filter orders containing this item number
-        get_latest: If True, automatically gets recent records from end of dataset (default: True)
+        auto_filter_recent: If True, applies 12-month recent filter automatically (default: True)
         auto_paginate: If True, automatically fetches up to 200 records (default: True)
+        include_all_data: If True, disables recent filtering to get all historical data (default: False)
+        filter_quality: If True, filters out template/test orders (default: True)
         
     Returns:
-        Formatted list of customer orders with enhanced status interpretation
+        Formatted list of recent, quality customer orders with enhanced status interpretation
     """
     # Auto-paginate up to 200 records (4 pages) if enabled
     all_orders = []
@@ -446,13 +595,18 @@ async def get_customer_orders(
     total_pages = 0
     
     for page_num in range(page, page + max_auto_pages):
-        base_params = get_standard_customer_order_params(size, page_num, status, customer_no, since_date, search_term, item_no)
-        
-        # If get_latest is True and first page, get recent records
-        if get_latest and page_num == page:
-            params = await get_recent_customer_orders_params(base_params)
-        else:
-            params = base_params
+        # Use unified API parameters with consistent defaults
+        params = get_unified_api_params(
+            size=size,
+            page=page_num,
+            auto_filter_recent=auto_filter_recent,
+            since_date=since_date,
+            status=status,
+            search_term=search_term,
+            customer_no=customer_no,
+            item_no=item_no,
+            include_all_data=include_all_data
+        )
             
         try:
             result = await make_oseon_request("/api/v2/sales/customerOrders", params)
@@ -461,6 +615,11 @@ async def get_customer_orders(
                 break  # No more data
                 
             orders = result["collection"]
+            
+            # Apply quality filtering if enabled
+            if filter_quality:
+                orders = filter_quality_orders(orders)
+            
             all_orders.extend(orders)
             
             # Store metadata from first successful request
@@ -480,51 +639,55 @@ async def get_customer_orders(
     if not all_orders:
         return "No customer orders found matching the criteria."
     
-    try:
+    # Build response with unified system info
+    filter_info = []
+    if not include_all_data and auto_filter_recent:
+        filter_info.append("Recent (12 months)")
+    if since_date and not auto_filter_recent:
+        filter_info.append(f"Since: {since_date}")
+    if status:
+        filter_info.append(f"Status: {status}")
+    if customer_no:
+        filter_info.append(f"Customer: {customer_no}")
+    if search_term:
+        filter_info.append(f"Search: '{search_term}'")
+    if item_no:
+        filter_info.append(f"Item: {item_no}")
+    if filter_quality:
+        filter_info.append("Quality filtered")
+    
+    filter_desc = " | ".join(filter_info) if filter_info else "No filters"
+    
+    # Calculate display info
+    pages_fetched = min(max_auto_pages, total_pages - page + 1) if auto_paginate else 1
+    end_page = page + pages_fetched - 1
+    
+    if auto_paginate and pages_fetched > 1:
+        response = f"🔄 CUSTOMER ORDERS (Unified System - {filter_desc}):\n"
+        response += f"📊 Auto-paginated: Pages {page}-{end_page}, {len(all_orders)} quality records of {total_records} total\n"
+    else:
+        response = f"🔄 CUSTOMER ORDERS (Unified System - {filter_desc}):\n"
+        response += f"📊 Page {page}, {len(all_orders)} quality records of {total_records} total\n"
+    
+    response += "=" * 100 + "\n"
+    
+    for order in all_orders:
+        response += format_customer_order(order, show_positions=False)
+        response += "-" * 100 + "\n"
         
-        # Add filter information to header
-        filter_info = []
-        if status:
-            filter_info.append(f"Status: {status}")
-        if customer_no:
-            filter_info.append(f"Customer: {customer_no}")
-        if since_date:
-            filter_info.append(f"Since: {since_date}")
-        if search_term:
-            filter_info.append(f"Search: '{search_term}'")
-        if item_no:
-            filter_info.append(f"Item: {item_no}")
-            
-        filter_text = f" | Filters: {', '.join(filter_info)}" if filter_info else ""
-        
-        # Calculate display info
-        pages_fetched = min(max_auto_pages, total_pages - page + 1) if auto_paginate else 1
-        end_page = page + pages_fetched - 1
-        
-        if auto_paginate and pages_fetched > 1:
-            response = f"Customer Orders (Auto-paginated: Pages {page}-{end_page}, {len(all_orders)} of {total_records} total){filter_text}:\n"
-        else:
-            response = f"Customer Orders (Page {page}, {len(all_orders)} of {total_records} total){filter_text}:\n"
-        response += "=" * 80 + "\n"
-        
-        for order in all_orders:
-            response += format_customer_order(order, show_positions=False)
-            response += "-" * 80 + "\n"
-            
-        # Add pagination guidance
-        if total_pages > end_page:
-            response += "\n" + "=" * 80 + "\n"
-            response += f"📄 PAGINATION: Showing {len(all_orders)} records from {pages_fetched} pages\n"
-            response += f"💡 NEXT: Use page={end_page + 1} to continue, or get_customer_orders_bulk(start_page={end_page + 1}) for bulk fetching\n"
-            response += f"📊 BULK: Use get_customer_orders_bulk() for 200+ records with array storage\n"
-        elif len(all_orders) >= 200:
-            response += "\n" + "=" * 80 + "\n"
-            response += f"📊 BULK DATA: Fetched {len(all_orders)} records. Use get_customer_orders_bulk() for structured array storage of large datasets\n"
-        
-        return response
-        
-    except Exception as e:
-        return f"Error retrieving customer orders: {str(e)}"
+    # Add pagination guidance
+    if total_pages > end_page:
+        response += "\n" + "=" * 100 + "\n"
+        response += f"📄 PAGINATION: Showing {len(all_orders)} quality records from {pages_fetched} pages\n"
+        response += f"💡 NEXT: Use page={end_page + 1} to continue\n"
+        response += f"🔧 BULK: Use get_customer_orders_bulk() for 200+ records with array storage\n"
+        response += f"🗂️ ALL DATA: Use include_all_data=True to access historical data beyond 12 months\n"
+    elif len(all_orders) >= 200:
+        response += "\n" + "=" * 100 + "\n"
+        response += f"📊 BULK DATA: Fetched {len(all_orders)} quality records\n"
+        response += f"🔧 BULK: Use get_customer_orders_bulk() for structured array storage of large datasets\n"
+    
+    return response
 
 @mcp.tool()
 async def browse_customer_orders_paginated(
@@ -1270,26 +1433,32 @@ async def get_modified_orders(
         return f"Error retrieving modified orders: {str(e)}"
 
 @mcp.tool()
-async def get_recent_orders(days: int = 30, max_results: int = 25) -> str:
+async def get_recent_orders(days: int = 30, max_results: int = 25, filter_quality: bool = True) -> str:
     """
-    Get customer orders from the last specified number of days (based on modification date).
-    Orders are automatically sorted by newest first.
+    Get customer orders from the last specified number of days - UNIFIED SYSTEM.
+    
+    🔄 UNIFIED SYSTEM: Uses dynamic date calculation and quality filtering.
     
     Args:
         days: Number of days back to search (default: 30)
         max_results: Maximum number of results to return (default: 25)
+        filter_quality: If True, filters out template/test orders (default: True)
         
     Returns:
-        Formatted list of recent orders with enhanced status interpretation
+        Formatted list of recent, quality orders with enhanced status interpretation
     """
-    # Calculate the date threshold
+    # Calculate the date threshold dynamically
     since_date = datetime.now() - timedelta(days=days)
     since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
     
-    params = {
-        "since": since_iso,
-        "size": min(max_results, 50)
-    }
+    # Use unified API parameters
+    params = get_unified_api_params(
+        size=max_results,
+        page=1,
+        auto_filter_recent=False,  # We're providing specific since_date
+        since_date=since_iso,
+        include_all_data=False
+    )
     
     try:
         result = await make_oseon_request("/api/v2/sales/customerOrders", params)
@@ -1298,14 +1467,20 @@ async def get_recent_orders(days: int = 30, max_results: int = 25) -> str:
             return f"No customer orders found in the last {days} days"
             
         orders = result["collection"]
+        
+        # Apply quality filtering if enabled
+        if filter_quality:
+            orders = filter_quality_orders(orders)
+        
         total_found = result.get("records", 0)
         
-        response = f"RECENT ORDERS (Last {days} days, sorted newest first) - ({len(orders)} of {total_found} total):\n"
-        response += "=" * 80 + "\n"
+        response = f"🔄 RECENT ORDERS (Unified System - Last {days} days):\n"
+        response += f"📊 {len(orders)} quality records of {total_found} total\n"
+        response += "=" * 100 + "\n"
         
         for order in orders:
             response += format_customer_order(order, show_positions=False)
-            response += "-" * 80 + "\n"
+            response += "-" * 100 + "\n"
             
         return response
         
@@ -1403,24 +1578,31 @@ async def get_production_orders(
     status: Optional[int] = None,
     search_term: Optional[str] = None,
     since_date: Optional[str] = None,
-    get_latest: bool = True,
-    auto_paginate: bool = True
+    auto_filter_recent: bool = True,
+    auto_paginate: bool = True,
+    include_all_data: bool = False,
+    filter_quality: bool = True
 ) -> str:
     """
-    Get production orders with filtering options.
-    Automatically fetches up to 200 records (4 pages) by default.
+    Get production orders with unified filtering and consistent behavior.
+    
+    🔄 UNIFIED SYSTEM: Always returns recent, relevant data by default (last 12 months).
+    📊 QUALITY FILTERING: Automatically excludes template and test orders.
+    🆕 CONSISTENT SORTING: Always sorted by modification date (newest first).
     
     Args:
         size: Number of records per page (default: 50, API max)
         page: Page number (1-based, default: 1)
         status: Optional status filter (integer)
         search_term: Search keyword for OrderNo, OrderNoExt, and Description (supports wildcards with %)
-        since_date: Optional ISO 8601 date/time filter (e.g., "2024-01-01T00:00:00")
-        get_latest: If True, automatically gets recent records from end of dataset (default: True)
+        since_date: Optional ISO 8601 date filter (overrides auto_filter_recent if provided)
+        auto_filter_recent: If True, applies 12-month recent filter automatically (default: True)
         auto_paginate: If True, automatically fetches up to 200 records (default: True)
+        include_all_data: If True, disables recent filtering to get all historical data (default: False)
+        filter_quality: If True, filters out template/test orders (default: True)
         
     Returns:
-        Formatted list of production orders with key details
+        Formatted list of recent, quality production orders with key details
     """
     # Auto-paginate up to 200 records (4 pages) if enabled
     all_orders = []
@@ -1429,13 +1611,16 @@ async def get_production_orders(
     total_records = 0
     
     for page_num in range(page, page + max_auto_pages):
-        base_params = get_standard_production_order_params(size, page_num, status, search_term, since_date)
-        
-        # If get_latest is True and first page, get recent records
-        if get_latest and page_num == page:
-            params = await get_recent_production_orders_params(base_params)
-        else:
-            params = base_params
+        # Use unified API parameters with consistent defaults
+        params = get_unified_api_params(
+            size=size,
+            page=page_num,
+            auto_filter_recent=auto_filter_recent,
+            since_date=since_date,
+            status=str(status) if status is not None else None,
+            search_term=search_term,
+            include_all_data=include_all_data
+        )
         
         try:
             result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
@@ -1447,6 +1632,11 @@ async def get_production_orders(
                     break  # No more data
                     
             orders = result["collection"]
+            
+            # Apply quality filtering if enabled
+            if filter_quality:
+                orders = filter_quality_orders(orders)
+            
             all_orders.extend(orders)
             
             # Store metadata from first successful request
@@ -1467,14 +1657,30 @@ async def get_production_orders(
     if not all_orders:
         return "No production orders found with the specified criteria."
     
+    # Build response with unified system info
+    filter_info = []
+    if not include_all_data and auto_filter_recent:
+        filter_info.append("Recent (12 months)")
+    if since_date and not auto_filter_recent:
+        filter_info.append(f"Since: {since_date}")
+    if status is not None:
+        filter_info.append(f"Status: {status}")
+    if filter_quality:
+        filter_info.append("Quality filtered")
+    
+    filter_desc = " | ".join(filter_info) if filter_info else "No filters"
+    
     # Calculate display info
     pages_fetched = min(max_auto_pages, total_pages - page + 1) if auto_paginate else 1
     end_page = page + pages_fetched - 1
     
     if auto_paginate and pages_fetched > 1:
-        response = f"PRODUCTION ORDERS (Auto-paginated: Pages {page}-{end_page}, {len(all_orders)} of {total_records} total):\n"
+        response = f"🔄 PRODUCTION ORDERS (Unified System - {filter_desc}):\n"
+        response += f"📊 Auto-paginated: Pages {page}-{end_page}, {len(all_orders)} quality records of {total_records} total\n"
     else:
-        response = f"PRODUCTION ORDERS (Page {page}, {len(all_orders)} of {total_records} total):\n"
+        response = f"🔄 PRODUCTION ORDERS (Unified System - {filter_desc}):\n"
+        response += f"📊 Page {page}, {len(all_orders)} quality records of {total_records} total\n"
+    
     response += "=" * 100 + "\n"
     
     for order in all_orders:
@@ -1484,12 +1690,14 @@ async def get_production_orders(
     # Add pagination guidance
     if total_pages > end_page:
         response += "\n" + "=" * 100 + "\n"
-        response += f"📄 PAGINATION: Showing {len(all_orders)} records from {pages_fetched} pages\n"
-        response += f"💡 NEXT: Use page={end_page + 1} to continue, or get_production_orders_bulk(start_page={end_page + 1}) for bulk fetching\n"
-        response += f"📊 BULK: Use get_production_orders_bulk() for 200+ records with array storage\n"
+        response += f"📄 PAGINATION: Showing {len(all_orders)} quality records from {pages_fetched} pages\n"
+        response += f"💡 NEXT: Use page={end_page + 1} to continue\n"
+        response += f"🔧 BULK: Use get_production_orders_bulk() for 200+ records with array storage\n"
+        response += f"🗂️ ALL DATA: Use include_all_data=True to access historical data beyond 12 months\n"
     elif len(all_orders) >= 200:
         response += "\n" + "=" * 100 + "\n"
-        response += f"📊 BULK DATA: Fetched {len(all_orders)} records. Use get_production_orders_bulk() for structured array storage of large datasets\n"
+        response += f"📊 BULK DATA: Fetched {len(all_orders)} quality records\n"
+        response += f"🔧 BULK: Use get_production_orders_bulk() for structured array storage of large datasets\n"
             
     return response
 
