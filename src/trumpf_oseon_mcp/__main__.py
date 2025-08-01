@@ -2240,13 +2240,20 @@ def format_production_order(order: Dict[str, Any], show_operations: bool = False
 async def get_production_dashboard() -> str:
     """Get production status dashboard - consistent 4-step overview for management.
     
+    🗓️ DEFAULT FILTER: 7-day timeframe for focused daily operations.
+    
     Returns structured data for 'How's production?' with:
-    - Active work (orders in progress)
-    - Pipeline (orders ready to start)
-    - Recent completions
-    - Production issues
+    - Active work (orders in progress, last 7 days)
+    - Pipeline (orders ready to start, last 14 days)
+    - Recent completions (last 3 days)
+    - Production issues (1+ days overdue)
     
     Perfect for daily management meetings and AI agent consistency.
+    
+    📊 FOR MORE COMPREHENSIVE DATA:
+    - Use get_production_orders(since_date="YYYY-MM-DD") for custom timeframes
+    - Use get_production_orders(include_all_data=True) for all historical data
+    - Use get_in_progress_production_orders(since_days=30) for broader active work
     """
     try:
         results = {
@@ -2354,8 +2361,9 @@ async def get_production_dashboard() -> str:
 
 📊 SUMMARY: {results['sections'][0]['count']} active | {results['sections'][1]['count']} pipeline | {results['sections'][2]['count']} completed | {results['sections'][3]['count']} issues
 
-💡 Use this for daily production meetings and status updates.
-   For details on specific orders, use individual production order tools.
+🗓️ TIMEFRAME: 7-day focused view for daily operations
+💡 FOR MORE DATA: Use get_production_orders(since_days=30) or get_production_orders(include_all_data=True)
+   For specific details, use individual production order tools.
 """
         
         return output.strip()
@@ -2690,13 +2698,20 @@ Ready-to-use React component for Claude artifacts:
 async def get_sales_dashboard() -> str:
     """Get sales status dashboard - consistent 4-step overview for management.
     
+    🗓️ DEFAULT FILTER: 7-day timeframe for focused daily operations.
+    
     Returns structured data for 'How's sales?' with:
-    - New business (recent orders)
-    - Orders ready for production
-    - Delivery issues
-    - Recent order changes
+    - New business (recent orders, last 7 days)
+    - Orders ready for production (current RELEASED status)
+    - Delivery issues (1+ days overdue)
+    - Recent order changes (last 3 days)
     
     Perfect for daily management meetings and AI agent consistency.
+    
+    📊 FOR MORE COMPREHENSIVE DATA:
+    - Use get_customer_orders(since_date="YYYY-MM-DD") for custom timeframes
+    - Use get_customer_orders(include_all_data=True) for all historical data
+    - Use get_customer_orders(since_days=30) for broader recent activity
     """
     try:
         results = {
@@ -2707,7 +2722,9 @@ async def get_sales_dashboard() -> str:
         
         # 1. New Business (limit 25 for consistency)
         try:
-            new_response = await get_customer_orders(size=25, since_days=7, auto_paginate=False)
+            # Calculate 7 days ago for new business filter
+            seven_days_ago = datetime.now() - timedelta(days=7)
+            new_response = await get_customer_orders(size=25, since_date=seven_days_ago.strftime("%Y-%m-%dT%H:%M:%S"), auto_paginate=False)
             new_count = len([line for line in new_response.split('\n') if 'Order Number:' in line])
             results["sections"].append({
                 "name": "New Business",
@@ -2768,7 +2785,9 @@ async def get_sales_dashboard() -> str:
         
         # 4. Recent Changes (limit 25 for consistency)
         try:
-            modified_response = await get_modified_orders(days=3, max_results=25)
+            # Calculate 3 days ago for recent changes filter
+            three_days_ago = datetime.now() - timedelta(days=3)
+            modified_response = await get_modified_orders(since_date=three_days_ago.strftime("%Y-%m-%dT%H:%M:%S"), max_results=25)
             modified_count = len([line for line in modified_response.split('\n') if 'Order Number:' in line])
             results["sections"].append({
                 "name": "Recent Changes",
@@ -2804,8 +2823,9 @@ async def get_sales_dashboard() -> str:
 
 📊 SUMMARY: {results['sections'][0]['count']} new | {results['sections'][1]['count']} ready | {results['sections'][2]['count']} issues | {results['sections'][3]['count']} changes
 
-💡 Use this for daily sales meetings and status updates.
-   For details on specific orders, use individual customer order tools.
+🗓️ TIMEFRAME: 7-day focused view for daily operations
+💡 FOR MORE DATA: Use get_customer_orders(since_days=30) or get_customer_orders(include_all_data=True)
+   For specific details, use individual customer order tools.
 """
         
         return output.strip()
