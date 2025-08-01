@@ -2076,6 +2076,7 @@ def main():
     
     Starts the MCP server using stdio transport for Claude Desktop integration.
     """
+    load_dotenv()  # Load .env file at runtime
     mcp.run(transport="stdio")
 
 if __name__ == "__main__":

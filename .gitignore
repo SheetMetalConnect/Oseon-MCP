@@ -185,4 +185,4 @@ Desktop.ini
 .fuse_hidden*
 .directory
 .Trash-*
-.nfs*
+.nfs*.env
