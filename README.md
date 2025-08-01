@@ -2,7 +2,8 @@
 
 A Model Context Protocol (MCP) server that connects AI assistants to TRUMPF Oseon's API v2 for customer order and production management.
 
-![CleanShot 2025-08-01 at 10 05 16](https://github.com/user-attachments/assets/0ac0afa8-58ac-4eef-bf62-4834ac7060d5)
+![Oseon-MCP-ezgif com-optimize (1)](https://github.com/user-attachments/assets/eac6e45c-d536-4957-8248-279a0896e7ef)
+
 
 **Educational demonstration only.** TRUMPF Oseon is a trademark of TRUMPF Co. KG. No official affiliation.
 
