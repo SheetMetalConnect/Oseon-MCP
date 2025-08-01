@@ -11,8 +11,9 @@ A Model Context Protocol (MCP) server that connects AI assistants to TRUMPF Oseo
 ## What This Does
 
 Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
+- 🏭 **Management dashboards** - "How's production?" and "How's sales?" preset sequences
 - 📊 **Query customer orders** - "Show me recent orders for customer XYZ"
-- 🔧 **Check production status** - "How's production going?"
+- 🔧 **Check production status** - "What's in progress?", "What's released?", "What's finished?"
 - 🔍 **Search orders efficiently** - "Find everything related to ORDER123"
 - 📈 **Get data intelligently** - Auto-fetches up to 200 records with smart pagination
 - 🔗 **Link related data** - "Which production orders belong to customer order ORDER123?"
@@ -55,8 +56,9 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
    ```
 
 6. **Start using it** - Try asking Claude:
+   - **"How's production?"** (management dashboard)
+   - **"How's sales?"** (management dashboard)
    - "Show me the latest customer orders"
-   - "How's production going?"
    - "Find orders containing 'steel'"
 
 ## Features
@@ -104,6 +106,12 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 ## Example Queries
 
 ### 💬 Ask Claude These Questions:
+
+**Management Dashboard (Best Practice Sequences):**
+- 🏭 **"How's production?"** → 4-step overview: active work, pipeline, completions, issues
+- 📊 **"How's sales?"** → 4-step overview: new orders, ready for production, delivery issues, changes
+
+*Perfect for daily management meetings and quick status checks*
 
 **Quick Status Checks:**
 - "Show me recent customer orders"

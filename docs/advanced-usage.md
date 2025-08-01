@@ -119,7 +119,22 @@ check_production_order_overdue(
 
 ### Best Practices
 
-1. **Use auto-pagination by default:**
+1. **Use management dashboard sequences:**
+   ```bash
+   # Production meeting: "How's production?"
+   get_in_progress_production_orders(since_days=7)
+   get_released_production_orders(since_days=14) 
+   get_finished_production_orders(since_days=3)
+   check_production_order_overdue(search_term="%", days_overdue=1)
+   
+   # Sales meeting: "How's sales?"
+   get_customer_orders(since_days=7)
+   get_customer_orders(status="RELEASED")
+   check_customer_order_overdue(customer_no="%", days_overdue=1)
+   get_modified_orders(days=3)
+   ```
+
+2. **Use auto-pagination by default:**
    ```bash
    # Good: Gets up to 200 records automatically
    get_customer_orders(status="RELEASED")
@@ -128,7 +143,7 @@ check_production_order_overdue(
    get_customer_orders_bulk(num_pages=10)  # When you need more
    ```
 
-2. **Apply proper constraints:**
+3. **Apply proper constraints:**
    ```bash
    # Good: Use API filters
    get_released_production_orders(search_term="ORDER123%")
@@ -137,7 +152,7 @@ check_production_order_overdue(
    check_customer_order_overdue(customer_no="C123")
    ```
 
-3. **Follow pagination hints:**
+4. **Follow pagination hints:**
    - Functions suggest next actions
    - Use bulk operations for large datasets
    - Follow suggested page ranges
@@ -197,6 +212,56 @@ for order in customer_orders:
 all_related = search_orders_with_wildcards("PROJECT123%")
 ```
 
+## Management Dashboard Workflows
+
+### "How's Production?" - Daily Production Overview
+
+**Quick at-a-glance production status for management meetings:**
+
+```bash
+# 1. Current production activity
+get_in_progress_production_orders(since_days=7)
+
+# 2. Orders ready to start
+get_released_production_orders(since_days=14)
+
+# 3. Recent completions
+get_finished_production_orders(since_days=3)
+
+# 4. Check for production delays
+check_production_order_overdue(search_term="%", days_overdue=1)
+```
+
+**What this tells you:**
+- Active manufacturing work (last 7 days)
+- Production pipeline (orders waiting to start)
+- Recent achievements (last 3 days completed)
+- Red flags (any production delays)
+
+### "How's Sales?" - Daily Sales Overview
+
+**Quick at-a-glance sales status for management meetings:**
+
+```bash
+# 1. Recent customer activity
+get_customer_orders(since_days=7)
+
+# 2. Orders ready for production
+get_customer_orders(status="RELEASED")
+
+# 3. Check for delivery delays
+check_customer_order_overdue(customer_no="%", days_overdue=1)
+
+# 4. Recent order modifications
+get_modified_orders(days=3)
+```
+
+**What this tells you:**
+- New business (recent customer orders)
+- Production handoffs (released orders)
+- Customer service issues (overdue deliveries)
+- Order changes (recent modifications)
+
 ## Common Workflows
 
 ### Production Status Workflow
@@ -230,6 +295,24 @@ for order in customer_orders:
 ```
 
 ## Quick Reference
+
+### Management Dashboard Commands
+
+**"How's Production?" (4-step sequence):**
+```bash
+get_in_progress_production_orders(since_days=7)           # Active work
+get_released_production_orders(since_days=14)             # Pipeline
+get_finished_production_orders(since_days=3)              # Completions
+check_production_order_overdue(search_term="%", days_overdue=1)  # Issues
+```
+
+**"How's Sales?" (4-step sequence):**
+```bash
+get_customer_orders(since_days=7)                         # New orders
+get_customer_orders(status="RELEASED")                    # Ready for production
+check_customer_order_overdue(customer_no="%", days_overdue=1)    # Delivery issues
+get_modified_orders(days=3)                               # Order changes
+```
 
 ### Main Tools (Auto-pagination)
 - `get_customer_orders()` - Up to 200 customer order records
