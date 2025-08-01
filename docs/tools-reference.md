@@ -6,29 +6,31 @@ Practical guide to all MCP tools and their optimal usage patterns for interactin
 
 ### Core Retrieval Tools
 
-#### `get_customer_orders`
-**Purpose:** Main tool for customer orders - auto-fetches up to 200 records (4 pages)
-**Best for:** Most queries - smart pagination handles large datasets efficiently
+#### `get_customer_orders` (Unified System)
+**Purpose:** Main tool for customer orders - 12-month recent data by default, quality filtered, newest first
+**Best for:** Most queries - smart defaults with agent-friendly overrides
 
 ```python
-# Default: Gets up to 200 records automatically
+# Default: Recent 12-month data, quality filtered, newest first
 get_customer_orders()
 
-# With filtering
+# With filtering (still uses 12-month default)
 get_customer_orders(
     status="RELEASED", 
     customer_no="C123",
     search_term="steel"
 )
 
-# Single page only
-get_customer_orders(auto_paginate=false)
+# Agent overrides for different user needs
+get_customer_orders(include_all_data=True)  # All historical data
+get_customer_orders(since_date="2023-01-01T00:00:00")  # Custom date
+get_customer_orders(filter_quality=False)  # Include template orders
 ```
 
 **Usage Notes:**
-- **Start here:** Best for most customer order queries
-- **Auto-pagination:** Fetches 4 pages (200 records) by default
-- **Smart guidance:** Suggests next actions for more data
+- **Unified System:** Consistent 12-month recent data filtering by default
+- **Agent-Friendly:** Override parameters for follow-up prompts
+- **Quality Filtered:** Automatically excludes template/test orders (override available)
 
 #### `get_customer_order_details`
 **Purpose:** Retrieve complete order information including positions, pricing, operations
@@ -172,19 +174,23 @@ get_orders_by_item(item_description="steel bracket", max_results=25)
 
 ### Core Production Tools
 
-#### `get_production_orders`
-**Purpose:** Main tool for production orders - auto-fetches up to 200 records (4 pages)
-**Best for:** Most production queries with smart pagination
+#### `get_production_orders` (Unified System)
+**Purpose:** Main tool for production orders - 12-month recent data by default, quality filtered, newest first
+**Best for:** Most production queries with intelligent defaults and agent overrides
 
 ```python
-# Default: Gets up to 200 records automatically
+# Default: Recent 12-month data, quality filtered, newest first
 get_production_orders()
 
-# With filtering
+# With filtering (still uses 12-month default)
 get_production_orders(
     search_term="ORDER123%", 
     status=60  # Active production
 )
+
+# Agent overrides for different user needs
+get_production_orders(include_all_data=True)  # All historical data
+get_production_orders(filter_quality=False)  # Include template orders
 ```
 
 #### `get_released_production_orders`

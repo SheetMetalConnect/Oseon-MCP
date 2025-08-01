@@ -72,14 +72,21 @@ check_customer_order_overdue(customer_no="C123")
 
 ## Complex Filtering Combinations
 
-### Customer Orders Filtering
+### Customer Orders Filtering (Unified System)
 
 ```bash
-# Auto-pagination with filtering
+# Auto-pagination with filtering (12-month recent data by default)
 get_customer_orders(
     status="RELEASED",
     customer_no="C123",
     search_term="steel"
+)
+
+# Override for historical data
+get_customer_orders(
+    status="RELEASED",
+    include_all_data=True,
+    filter_quality=False  # Include template/test orders
 )
 
 # Item-based search
@@ -88,7 +95,7 @@ get_orders_by_item(
     status_category="completed"
 )
 
-# Customer-specific queries
+# Customer-specific queries with unified system
 get_latest_orders_for_customer(
     customer_no="C123",
     max_results=50

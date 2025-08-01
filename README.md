@@ -61,14 +61,17 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
    - **"Get sales dashboard"** (consistent management overview)
    - **"Get production dashboard template"** (instant React artifact)
    - **"Get sales dashboard template"** (instant React artifact)
-   - "Show me the latest customer orders"
+   - "Show me recent production orders" (gets last 12 months automatically)
+   - "Show me ALL historical production orders" (agent uses include_all_data=True)
    - "Find orders containing 'steel'"
 
 ## Features
 
+- **🔄 Unified System**: Consistent behavior across all commands with smart defaults (12-month recent data, newest first)
+- **🤖 Agent-Friendly**: Intelligent override parameters for follow-up prompts and user intent adaptation
 - **🎯 AI Agent Reliable**: Dashboards always return identical structure for consistent agent responses
 - **🎨 Instant Artifacts**: Precompiled React/TypeScript templates for Claude to create visual dashboards
-- **📊 Consistent Data**: Limited results (25 per section) prevent overload, perfect for management meetings
+- **📊 Quality Data**: Automatic filtering of template/test orders with override options
 - **⚡ Efficient Design**: All functions use proper API filtering instead of client-side scanning
 - **🔗 Cross-System Linking**: Connect customer orders to production orders seamlessly
 - **🔍 Smart Search**: Use `%` patterns for flexible wildcard searching
@@ -88,8 +91,8 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 - **get_production_dashboard_template** - Ready React/TypeScript component for Claude artifacts
 - **get_sales_dashboard_template** - Ready React/TypeScript component for Claude artifacts
 
-### Customer Orders
-- **get_customer_orders** - Main tool: auto-fetches up to 200 records with smart pagination
+### Customer Orders (Unified System)
+- **get_customer_orders** - Main tool: 12-month recent data by default, quality filtered, newest first
 - **get_customer_order_details** - Detailed information about a specific order
 - **browse_customer_orders_paginated** - Interactive browsing with confirmation
 - **get_latest_orders_for_customer** - Recent orders for a specific customer
@@ -97,12 +100,12 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 - **get_orders_with_advanced_filter** - Complex multi-criteria filtering
 - **search_orders_advanced** - Advanced search with multiple options
 - **get_modified_orders** - Recently modified orders
-- **get_recent_orders** - Orders from last N days
+- **get_recent_orders** - Orders from last N days with unified system
 - **get_orders_by_item** - Find orders containing specific items
 - **get_customer_orders_bulk** - Bulk retrieval for 200+ records with array storage
 
-### Production Orders
-- **get_production_orders** - Main tool: auto-fetches up to 200 records with smart pagination
+### Production Orders (Unified System)
+- **get_production_orders** - Main tool: 12-month recent data by default, quality filtered, newest first
 - **get_released_production_orders** - Orders with RELEASED status (API native)
 - **get_in_progress_production_orders** - Orders with IN_PROGRESS status (API native)
 - **get_finished_production_orders** - Orders with FINISHED status (API native)
