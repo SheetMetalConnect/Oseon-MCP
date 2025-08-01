@@ -233,10 +233,18 @@ check_production_order_overdue(search_term="%", days_overdue=1)
 ```
 
 **What this tells you:**
-- Active manufacturing work (last 7 days)
-- Production pipeline (orders waiting to start)
-- Recent achievements (last 3 days completed)
-- Red flags (any production delays)
+- **Active work**: Orders currently being manufactured
+- **Pipeline**: Orders released and waiting to start production
+- **Recent wins**: Completed orders (achievements)
+- **Red flags**: Any production delays requiring attention
+
+**Example output sequence:**
+```
+✅ Active Production (7 days): 12 orders in progress
+⏳ Production Pipeline (14 days): 8 orders ready to start  
+🏆 Recent Completions (3 days): 5 orders finished
+⚠️ Production Issues: 2 orders overdue by 1+ days
+```
 
 ### "How's Sales?" - Daily Sales Overview
 
@@ -257,10 +265,18 @@ get_modified_orders(days=3)
 ```
 
 **What this tells you:**
-- New business (recent customer orders)
-- Production handoffs (released orders)
-- Customer service issues (overdue deliveries)
-- Order changes (recent modifications)
+- **New business**: Recent customer orders and activity
+- **Production ready**: Orders released and handed off to manufacturing
+- **Customer issues**: Overdue deliveries requiring follow-up
+- **Order activity**: Recent changes and modifications
+
+**Example output sequence:**
+```
+💰 New Sales (7 days): 6 customer orders received
+🔄 Ready for Production: 4 orders released to manufacturing
+⚠️ Delivery Issues: 1 customer order overdue by 2 days
+📝 Recent Changes (3 days): 3 orders modified
+```
 
 ## Common Workflows
 
