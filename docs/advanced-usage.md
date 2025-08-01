@@ -23,9 +23,13 @@ graph LR
 
 **Auto-pagination (recommended):**
 ```bash
-# Gets up to 200 records automatically (4 pages)
+# Gets recent 12-month data automatically (up to 200 records, quality filtered)
 get_customer_orders(status="RELEASED")
 get_production_orders(search_term="ORDER123%")
+
+# Override for all historical data
+get_production_orders(include_all_data=True)
+get_customer_orders(since_date="2020-01-01T00:00:00")
 ```
 
 **Bulk operations (200+ records):**
