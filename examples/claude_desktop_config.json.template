@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "trumpf-oseon": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/ABSOLUTE/PATH/TO/PROJECT",
+        "run",
+        "python",
+        "-m",
+        "trumpf_oseon_mcp"
+      ]
+    }
+  }
+}

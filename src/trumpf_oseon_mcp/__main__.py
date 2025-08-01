@@ -1,0 +1,2082 @@
+"""TRUMPF Oseon API v2 MCP Server
+
+MCP server for TRUMPF Oseon customer order management.
+Educational demonstration - TRUMPF Oseon is a trademark of TRUMPF Co. KG
+"""
+
+__version__ = "1.0.0"
+__author__ = "Luke van Enkhuizen (Sheet Metal Connect e.U.)"
+__license__ = "MIT"
+
+import asyncio
+import base64
+import json
+import logging
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
+
+import httpx
+from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
+
+from .config import get_config
+
+# Load environment variables from .env file if it exists
+# This allows users to configure API credentials without modifying code
+load_dotenv()
+
+# Configure logging to stderr (required for MCP servers)
+# MCP clients like Claude Desktop read logs from stderr
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]  # Ensure stderr logging
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FastMCP server with a unique identifier
+# This name appears in MCP client configurations
+mcp = FastMCP("trumpf-oseon")
+
+# Load configuration from environment variables or defaults
+# See config.py for available configuration options
+OSEON_CONFIG = get_config()
+
+# Demo mode settings - set to True for demo videos to sanitize customer data
+# Set to False for production use with real customer data
+DEMO_MODE = False
+
+def sanitize_for_demo(data):
+    """
+    Sanitize customer data for demo purposes.
+    Replaces real customer information with demo-safe values.
+    """
+    if not DEMO_MODE or not isinstance(data, dict):
+        return data
+    
+    # Create a copy to avoid modifying original data
+    sanitized = data.copy()
+    
+    # Replace customer information
+    if 'customerName' in sanitized:
+        sanitized['customerName'] = "Sheet Metal Connect"
+    if 'customerNo' in sanitized:
+        sanitized['customerNo'] = "C1"
+    
+    # Also sanitize nested positions if they exist
+    if 'positions' in sanitized and isinstance(sanitized['positions'], list):
+        sanitized['positions'] = [sanitize_for_demo(pos) for pos in sanitized['positions']]
+    
+    return sanitized
+
+def get_auth_header() -> str:
+    """Generate Basic Auth header for TRUMPF Oseon API."""
+    credentials = f"{OSEON_CONFIG['username']}:{OSEON_CONFIG['password']}"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode()
+    return f"Basic {encoded_credentials}"
+
+async def make_oseon_request(endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+    """Make an authenticated request to the TRUMPF Oseon API."""
+    url = f"{OSEON_CONFIG['base_url']}{endpoint}"
+    headers = OSEON_CONFIG['default_headers'].copy()
+    headers["Authorization"] = get_auth_header()
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            logger.info(f"Making request to: {url}")
+            if params:
+                logger.info(f"Query parameters: {params}")
+                
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(f"Request successful. Records returned: {result.get('records', 'N/A')}")
+            return result
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
+        raise Exception(f"API request failed with status {e.response.status_code}: {e.response.text}")
+    except Exception as e:
+        logger.error(f"Request failed: {str(e)}")
+        raise Exception(f"Failed to connect to TRUMPF Oseon API: {str(e)}")
+
+
+def calculate_recent_page_params(total_pages: int, total_records: int, page_size: int, target_records: int = 150) -> dict:
+    """Calculate pagination parameters to get recent records from the end of the dataset.
+    
+    Args:
+        total_pages: Total number of pages available
+        total_records: Total number of records available  
+        page_size: Number of records per page
+        target_records: Target number of recent records to fetch (default: 150)
+        
+    Returns:
+        dict with 'page' (0-based) and 'size' for API request
+    """
+    if total_pages <= 1:
+        return {"page": 0, "size": min(page_size, 50)}
+    
+    # Calculate how many records we actually want (limited by what's available)
+    records_to_fetch = min(target_records, total_records)
+    
+    # Calculate how many pages we need for those records
+    pages_needed = max(1, (records_to_fetch + page_size - 1) // page_size)  # Ceiling division
+    
+    # Start from this many pages back from the end
+    start_page = max(0, total_pages - pages_needed)
+    
+    return {"page": start_page, "size": min(page_size, 50)}
+
+
+async def get_recent_customer_orders_params(base_params: dict, target_records: int = 150) -> dict:
+    """Get pagination parameters for recent customer orders.
+    
+    Args:
+        base_params: Base API parameters (filters, etc.)
+        target_records: Number of recent records to target
+        
+    Returns:
+        Updated parameters with proper pagination for recent records
+    """
+    try:
+        # Get total pages/records with same page size as target request
+        target_size = base_params.get("size", 25)
+        initial_params = base_params.copy()
+        initial_params.update({"size": target_size, "page": 0})
+        
+        result = await make_oseon_request("/api/v2/sales/customerOrders", initial_params)
+        total_pages = result.get("pages", 1)
+        total_records = result.get("records", 0)
+        
+        # Calculate proper pagination
+        page_params = calculate_recent_page_params(total_pages, total_records, target_size, target_records)
+        
+        # Update base params with calculated pagination
+        updated_params = base_params.copy()
+        updated_params.update(page_params)
+        
+        return updated_params
+        
+    except Exception:
+        # Fallback to first page if calculation fails
+        fallback_params = base_params.copy()
+        fallback_params.update({"page": 0, "size": min(base_params.get("size", 25), 50)})
+        return fallback_params
+
+
+async def get_recent_production_orders_params(base_params: dict, target_records: int = 150) -> dict:
+    """Get pagination parameters for recent production orders.
+    
+    Args:
+        base_params: Base API parameters (filters, etc.)
+        target_records: Number of recent records to target
+        
+    Returns:
+        Updated parameters with proper pagination for recent records
+    """
+    try:
+        # Get total pages/records with same page size as target request
+        target_size = base_params.get("size", 25)
+        initial_params = base_params.copy()
+        initial_params.update({"size": target_size, "page": 0})
+        
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", initial_params)
+        total_pages = result.get("pages", 1)
+        total_records = result.get("records", 0)
+        
+        # Calculate proper pagination
+        page_params = calculate_recent_page_params(total_pages, total_records, target_size, target_records)
+        
+        # Update base params with calculated pagination
+        updated_params = base_params.copy()
+        updated_params.update(page_params)
+        
+        return updated_params
+        
+    except Exception:
+        # Fallback to first page if calculation fails
+        fallback_params = base_params.copy()
+        fallback_params.update({"page": 0, "size": min(base_params.get("size", 25), 50)})
+        return fallback_params
+
+
+def get_standard_customer_order_params(size: int, page: int, status: Optional[str] = None, 
+                                      customer_no: Optional[str] = None, since_date: Optional[str] = None,
+                                      search_term: Optional[str] = None, item_no: Optional[str] = None) -> dict:
+    """Get standard parameters for customer order API calls with consistent sorting.
+    
+    Args:
+        size: Number of records per page
+        page: Page number (1-based, will be converted to 0-based)
+        status: Optional status filter
+        customer_no: Optional customer number filter
+        since_date: Optional date filter
+        search_term: Optional search term
+        item_no: Optional item number filter
+        
+    Returns:
+        Dictionary of API parameters
+    """
+    params = {
+        "size": min(size, 50),
+        "page": max(0, page - 1),  # Convert to 0-based
+        "sortBy": "modificationDate",
+        "sortOrder": "desc"  # Always newest first
+    }
+    
+    if status:
+        params["status"] = status.upper()
+    if customer_no:
+        params["customerNo"] = customer_no
+    if since_date:
+        params["since"] = since_date
+    if search_term:
+        params["searchBy"] = search_term
+    if item_no:
+        params["itemNo"] = item_no
+        
+    return params
+
+
+def get_standard_production_order_params(size: int, page: int, status: Optional[int] = None,
+                                        search_term: Optional[str] = None, since_date: Optional[str] = None) -> dict:
+    """Get standard parameters for production order API calls.
+    
+    Args:
+        size: Number of records per page
+        page: Page number (1-based, will be converted to 0-based)
+        status: Optional status filter
+        search_term: Optional search term
+        since_date: Optional date filter
+        
+    Returns:
+        Dictionary of API parameters
+    """
+    params = {
+        "size": min(size, 50),
+        "page": max(0, page - 1)  # Convert to 0-based
+    }
+    
+    if status is not None:
+        params["status"] = status
+    if search_term:
+        params["searchBy"] = search_term
+    if since_date:
+        params["since"] = since_date
+        
+    return params
+
+
+def is_order_overdue(due_date_str: str, status: Any) -> bool:
+    """Check if a production order is overdue.
+    
+    Args:
+        due_date_str: Due date string in format "14.08.2017 16:00:00"
+        status: Order status
+        
+    Returns:
+        bool: True if order is overdue and meaningful
+    """
+    # Don't consider completed/canceled orders as overdue
+    if str(status) in ["95", "100", "COMPLETED", "CANCELED"]:
+        return False
+    
+    try:
+        # Parse due date (format: "14.08.2017 16:00:00")
+        due_date = datetime.strptime(due_date_str, "%d.%m.%Y %H:%M:%S")
+        now = datetime.now()
+        
+        # Don't consider very old orders as meaningfully "overdue"
+        if due_date.year < 2020:
+            return False
+            
+        # Only consider overdue if it's past due date and not too ancient
+        days_overdue = (now - due_date).days
+        return now > due_date and days_overdue < 365  # Max 1 year overdue to be meaningful
+    except (ValueError, AttributeError):
+        return False
+
+
+def get_order_status_category(status: str) -> str:
+    """Categorize order status for business logic and user understanding.
+    
+    This function groups various TRUMPF Oseon order statuses into logical business
+    categories that are easier for users to understand and filter by.
+    
+    Business Logic:
+    - NEWEST: Orders in pre-production (validation, planning phase)
+    - RELEASED: Orders actively being manufactured 
+    - COMPLETED: Orders that have been delivered and/or invoiced
+    - OTHER: Any status not matching the above categories
+    
+    Args:
+        status: Raw order status from the API
+        
+    Returns:
+        str: Business category ("NEWEST", "RELEASED", "COMPLETED", or "OTHER")
+    """
+    status = status.upper() if status else ""
+    
+    # Newest orders - likely in early stages (invalid/valid, not released yet)
+    if status in ["INCOMPLETE", "VALID", "INVALID", "PENDING", "CREATED", "PLANNED"]:
+        return "NEWEST"
+    
+    # Released for production - in manufacturing phase
+    elif status in ["RELEASED", "SCHEDULED", "IN_PRODUCTION", "MANUFACTURING", "STARTED"]:
+        return "RELEASED"
+    
+    # Completed orders - delivered and invoiced
+    elif status in ["COMPLETED", "DELIVERED", "INVOICED", "FINISHED", "CLOSED"]:
+        return "COMPLETED"
+    
+    # Default category for unknown statuses
+    else:
+        return "OTHER"
+
+def format_customer_order(order: Dict[str, Any], show_positions: bool = True) -> str:
+    """Format a customer order for display with enhanced status interpretation.
+    
+    This function takes raw order data from the TRUMPF Oseon API and formats it
+    into a human-readable string with business context and calculated values.
+    
+    Args:
+        order: Raw order data from the API
+        show_positions: Whether to include detailed position information and calculations
+        
+    Returns:
+        str: Formatted order information ready for display to users
+    """
+    # Sanitize customer data for demo if needed
+    sanitized_order = sanitize_for_demo(order)
+    
+    status = sanitized_order.get('status', 'N/A')
+    status_category = get_order_status_category(status)
+    
+    # Add business context to status for better user understanding
+    status_info = f"{status}"
+    if status_category == "NEWEST":
+        status_info += " (NEWEST - Pre-production)"
+    elif status_category == "RELEASED":
+        status_info += " (RELEASED - In production)"
+    elif status_category == "COMPLETED":
+        status_info += " (COMPLETED - Delivered/Invoiced)"
+    
+    # Calculate and format position information if requested
+    positions_info = ""
+    if show_positions and sanitized_order.get("positions"):
+        total_positions = len(sanitized_order["positions"])
+        # Calculate total order value by summing all position values
+        total_value = sum(
+            pos.get("netPricePerUnit", 0) * pos.get("targetQuantity", 0) 
+            for pos in sanitized_order["positions"]
+        )
+        positions_info = f"\n  Positions: {total_positions} items, Total Value: €{total_value:.2f}"
+        
+        # Show first few positions as examples
+        if total_positions > 0:
+            positions_info += "\n  Sample Items:"
+            for i, pos in enumerate(sanitized_order["positions"][:3]):
+                positions_info += f"\n    - {pos.get('itemNo', 'N/A')} (Qty: {pos.get('targetQuantity', 0)}, €{pos.get('netPricePerUnit', 0):.2f}/unit)"
+            if total_positions > 3:
+                positions_info += f"\n    ... and {total_positions - 3} more items"
+    
+    return f"""
+Order #{sanitized_order.get('customerOrderNo', 'N/A')}
+  External Ref: {sanitized_order.get('customerOrderNoExt', 'N/A')}
+  Customer: {sanitized_order.get('customerName', 'N/A')} ({sanitized_order.get('customerNo', 'N/A')})
+  Status: {status_info}
+  Order Date: {sanitized_order.get('orderDate', 'N/A')}{positions_info}
+  Notes: {sanitized_order.get('note', 'None')}
+"""
+
+@mcp.tool()
+async def get_customer_orders(
+    size: int = 25, 
+    page: int = 1, 
+    status: Optional[str] = None,
+    customer_no: Optional[str] = None,
+    since_date: Optional[str] = None,
+    search_term: Optional[str] = None,
+    item_no: Optional[str] = None,
+    get_latest: bool = True
+) -> str:
+    """
+    Get customer orders with comprehensive filtering options.
+    Orders are sorted by modification date (newest first).
+    
+    Args:
+        size: Number of orders per page (default: 25, max: 50)
+        page: Page number (1-based, default: 1)
+        status: Filter by order status (e.g., 'COMPLETED', 'INVOICED', 'INCOMPLETE')
+        customer_no: Filter by exact customer number
+        since_date: Filter orders modified since this date (ISO format: 2024-01-01T00:00:00)
+        search_term: Search in order numbers and external references (supports wildcards with %)
+        item_no: Filter orders containing this item number
+        get_latest: If True, automatically gets recent records from end of dataset (default: True)
+        
+    Returns:
+        Formatted list of customer orders with enhanced status interpretation
+    """
+    # Get standard parameters with consistent sorting
+    base_params = get_standard_customer_order_params(size, page, status, customer_no, since_date, search_term, item_no)
+    
+    # If get_latest is True and page is 1 (default), get recent records
+    if get_latest and page == 1:
+        params = await get_recent_customer_orders_params(base_params)
+    else:
+        params = base_params
+        
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return "No customer orders found matching the criteria."
+            
+        # Format response
+        orders = result["collection"]
+        total_records = result.get("records", 0)
+        total_pages = result.get("pages", 0)
+        current_page = result.get("currentPage", 0) + 1  # Convert back to 1-based
+        
+        # Add filter information to header
+        filter_info = []
+        if status:
+            filter_info.append(f"Status: {status}")
+        if customer_no:
+            filter_info.append(f"Customer: {customer_no}")
+        if since_date:
+            filter_info.append(f"Since: {since_date}")
+        if search_term:
+            filter_info.append(f"Search: '{search_term}'")
+        if item_no:
+            filter_info.append(f"Item: {item_no}")
+            
+        filter_text = f" | Filters: {', '.join(filter_info)}" if filter_info else ""
+        
+        response = f"Customer Orders (Page {current_page} of {total_pages}, {len(orders)} of {total_records} total){filter_text}:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in orders:
+            response += format_customer_order(order, show_positions=False)  # Compact view for lists
+            response += "-" * 80 + "\n"
+            
+        # Add pagination info if there are more pages
+        if total_pages > 1:
+            response += "\n" + "=" * 80 + "\n"
+            response += f"📄 PAGINATION: Currently showing page {current_page} of {total_pages}\n"
+            if current_page < total_pages:
+                response += f"💡 TIP: Use 'get_next_page_orders' to continue to page {current_page + 1}, or 'browse_customer_orders_paginated' to see more pages with confirmation.\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving customer orders: {str(e)}"
+
+@mcp.tool()
+async def browse_customer_orders_paginated(
+    max_pages: int = 5,
+    size: int = 25,
+    status: Optional[str] = None,
+    customer_no: Optional[str] = None,
+    since_date: Optional[str] = None,
+    search_term: Optional[str] = None,
+    item_no: Optional[str] = None,
+    sort_order: str = "desc"
+) -> str:
+    """
+    Browse through multiple pages of customer orders with user-friendly pagination.
+    This function fetches multiple pages automatically but warns about large datasets.
+    
+    Args:
+        max_pages: Maximum number of pages to browse (default: 5, safety limit)
+        size: Number of orders per page (default: 25, max: 50)
+        status: Filter by order status
+        customer_no: Filter by customer number
+        since_date: Filter orders since this date
+        search_term: Search term for order numbers/references
+        item_no: Filter by item number
+        sort_order: Sort order - "desc" for newest first, "asc" for oldest first
+        
+    Returns:
+        Formatted results from multiple pages with pagination info
+    """
+    if max_pages > 10:
+        return "⚠️  Maximum pages limited to 10 for performance reasons. Please refine your search criteria for larger datasets."
+    
+    all_orders = []
+    total_found = 0
+    pages_processed = 0
+    
+    try:
+        for page_num in range(1, max_pages + 1):
+            # Build parameters for this page
+            params = {"size": min(size, 50), "page": page_num - 1}
+            
+            # Add sorting parameters
+            if sort_order.lower() == "asc":
+                params["sortBy"] = "modificationDate"
+                params["sortOrder"] = "asc"
+            else:
+                params["sortBy"] = "modificationDate"
+                params["sortOrder"] = "desc"
+            
+            # Add filters
+            if status:
+                params["status"] = status.upper()
+            if customer_no:
+                params["customerNo"] = customer_no
+            if since_date:
+                params["since"] = since_date
+            if search_term:
+                params["searchBy"] = search_term
+            if item_no:
+                params["itemNo"] = item_no
+            
+            result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+            
+            if not result.get("collection"):
+                break
+                
+            orders = result["collection"]
+            total_records = result.get("records", 0)
+            total_pages = result.get("pages", 0)
+            
+            all_orders.extend(orders)
+            total_found = total_records
+            pages_processed = page_num
+            
+            # If this is the last page or we've reached the end, break
+            if page_num >= total_pages:
+                break
+        
+        if not all_orders:
+            return "No customer orders found matching the criteria."
+        
+        # Build comprehensive response
+        filter_info = []
+        if status:
+            filter_info.append(f"Status: {status}")
+        if customer_no:
+            filter_info.append(f"Customer: {customer_no}")
+        if since_date:
+            filter_info.append(f"Since: {since_date}")
+        if search_term:
+            filter_info.append(f"Search: '{search_term}'")
+        if item_no:
+            filter_info.append(f"Item: {item_no}")
+            
+        filter_text = f" | Filters: {', '.join(filter_info)}" if filter_info else ""
+        
+        response = f"📊 MULTI-PAGE RESULTS: {len(all_orders)} orders from {pages_processed} pages (Total: {total_found}){filter_text}:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in all_orders:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        response += f"\n✅ Loaded {pages_processed} pages. Showing {len(all_orders)} of {total_found} total orders.\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error browsing paginated orders: {str(e)}"
+
+@mcp.tool()
+async def get_latest_orders_for_customer(
+    customer_no: str,
+    max_results: int = 25,
+    days_back: int = 90
+) -> str:
+    """
+    Get the latest orders for a specific customer efficiently.
+    
+    Args:
+        customer_no: Customer number to filter by
+        max_results: Maximum number of orders to return (default: 25)
+        days_back: Number of days to look back (default: 90)
+        
+    Returns:
+        Latest orders for the specified customer
+    """
+    # Calculate date threshold
+    since_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%S")
+    
+    params = {
+        "customerNo": customer_no,
+        "since": since_date,
+        "size": min(max_results, 50),
+        "page": 0,
+        "sortBy": "modificationDate",
+        "sortOrder": "desc"
+    }
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No orders found for customer {customer_no} in the last {days_back} days."
+            
+        orders = result["collection"]
+        total_found = result.get("records", 0)
+        
+        response = f"🏢 LATEST ORDERS FOR CUSTOMER {customer_no} (Last {days_back} days):\n"
+        response += f"Found {len(orders)} of {total_found} total orders\n"
+        response += "=" * 80 + "\n"
+        
+        for order in orders:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving latest orders for customer {customer_no}: {str(e)}"
+
+@mcp.tool()
+async def get_overdue_orders(
+    days_overdue: int = 7,
+    max_results: int = 50,
+    status_filter: Optional[str] = None
+) -> str:
+    """
+    Find orders that are past their due date efficiently.
+    
+    Args:
+        days_overdue: Number of days past due date to consider (default: 7)
+        max_results: Maximum number of orders to return (default: 50)
+        status_filter: Optional status filter (e.g., 'RELEASED', 'IN_PRODUCTION')
+        
+    Returns:
+        Orders that are overdue based on their planned dates
+    """
+    # Calculate cutoff date (orders that should have been completed by this date)
+    cutoff_date = (datetime.now() - timedelta(days=days_overdue)).strftime("%Y-%m-%dT%H:%M:%S")
+    
+    params = {
+        "size": min(max_results, 50),
+        "page": 0,
+        "sortBy": "modificationDate",
+        "sortOrder": "desc"
+    }
+    
+    # Add status filter if provided
+    if status_filter:
+        params["status"] = status_filter.upper()
+    
+    try:
+        # First, get recent orders and then filter for overdue ones
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return "No orders found to check for overdue status."
+            
+        orders = result["collection"]
+        overdue_orders = []
+        
+        for order in orders:
+            # Check if order has delivery date or planned end date
+            delivery_date = order.get('deliveryDate')
+            order_date = order.get('orderDate')
+            status = order.get('status', '')
+            
+            # Consider orders overdue if they're not completed and past expected delivery
+            if delivery_date and status not in ['COMPLETED', 'INVOICED', 'DELIVERED']:
+                try:
+                    # Parse delivery date and check if it's past due
+                    delivery_dt = datetime.fromisoformat(delivery_date.replace('Z', '+00:00'))
+                    if delivery_dt < datetime.now() - timedelta(days=days_overdue):
+                        overdue_orders.append(order)
+                except (ValueError, TypeError):
+                    continue
+                    
+        if not overdue_orders:
+            return f"✅ No orders found that are more than {days_overdue} days overdue."
+            
+        response = f"⚠️  OVERDUE ORDERS (Past due by {days_overdue}+ days):\n"
+        response += f"Found {len(overdue_orders)} overdue orders\n"
+        response += "=" * 80 + "\n"
+        
+        for order in overdue_orders:
+            response += format_customer_order(order, show_positions=False)
+            # Add overdue info
+            delivery_date = order.get('deliveryDate', 'N/A')
+            response += f"   🔴 OVERDUE: Delivery planned for {delivery_date}\n"
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error checking for overdue orders: {str(e)}"
+
+@mcp.tool()
+async def get_orders_with_advanced_filter(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    status_list: Optional[str] = None,
+    customer_no: Optional[str] = None,
+    max_results: int = 50,
+    include_pagination: bool = True
+) -> str:
+    """
+    Advanced filtering for customer orders with date ranges and multiple status filters.
+    
+    Args:
+        date_from: Start date for filtering (ISO format: 2024-01-01T00:00:00)
+        date_to: End date for filtering (ISO format: 2024-12-31T23:59:59)
+        status_list: Comma-separated list of statuses (e.g., "RELEASED,IN_PRODUCTION,COMPLETED")
+        customer_no: Specific customer number
+        max_results: Maximum results to return (default: 50)
+        include_pagination: Whether to show pagination info (default: true)
+        
+    Returns:
+        Filtered customer orders with comprehensive information
+    """
+    params = {
+        "size": min(max_results, 50),
+        "page": 0,
+        "sortBy": "modificationDate",
+        "sortOrder": "desc"
+    }
+    
+    if date_from:
+        params["since"] = date_from
+    if customer_no:
+        params["customerNo"] = customer_no
+        
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return "No orders found matching the advanced filter criteria."
+            
+        orders = result["collection"]
+        filtered_orders = []
+        
+        # Apply additional filtering for date_to and status_list
+        for order in orders:
+            # Filter by end date if specified
+            if date_to:
+                order_date = order.get('modificationDate') or order.get('orderDate')
+                if order_date:
+                    try:
+                        order_dt = datetime.fromisoformat(order_date.replace('Z', '+00:00'))
+                        to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+                        if order_dt > to_dt:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Filter by status list if specified
+            if status_list:
+                allowed_statuses = [s.strip().upper() for s in status_list.split(',')]
+                order_status = order.get('status', '').upper()
+                if order_status not in allowed_statuses:
+                    continue
+                    
+            filtered_orders.append(order)
+        
+        if not filtered_orders:
+            return "No orders found matching all the specified criteria."
+            
+        # Build filter description
+        filter_parts = []
+        if date_from:
+            filter_parts.append(f"From: {date_from}")
+        if date_to:
+            filter_parts.append(f"To: {date_to}")
+        if status_list:
+            filter_parts.append(f"Status: {status_list}")
+        if customer_no:
+            filter_parts.append(f"Customer: {customer_no}")
+            
+        filter_desc = " | ".join(filter_parts) if filter_parts else "No filters"
+        
+        response = f"🔍 ADVANCED FILTER RESULTS ({filter_desc}):\n"
+        response += f"Found {len(filtered_orders)} matching orders\n"
+        response += "=" * 80 + "\n"
+        
+        for order in filtered_orders:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        if include_pagination and len(orders) >= max_results:
+            response += f"\n💡 Results limited to {max_results}. Use browse_customer_orders_paginated for more results.\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error with advanced filtering: {str(e)}"
+
+@mcp.tool()
+async def get_customer_order_details(customer_order_no: str) -> str:
+    """
+    Get detailed information about a specific customer order.
+    
+    Args:
+        customer_order_no: The customer order number to retrieve
+        
+    Returns:
+        Detailed customer order information including all positions
+    """
+    try:
+        result = await make_oseon_request(f"/api/v2/sales/customerOrders/{customer_order_no}")
+        
+        if not result:
+            return f"No customer order found with number: {customer_order_no}"
+            
+        # Detailed formatting
+        order = sanitize_for_demo(result)
+        response = f"DETAILED ORDER INFORMATION\n"
+        response += "=" * 80 + "\n"
+        response += f"Order Number: {order.get('customerOrderNo', 'N/A')}\n"
+        response += f"External Reference: {order.get('customerOrderNoExt', 'N/A')}\n"
+        response += f"Customer: {order.get('customerName', 'N/A')} (#{order.get('customerNo', 'N/A')})\n"
+        response += f"Status: {order.get('status', 'N/A')}\n"
+        response += f"Order Date: {order.get('orderDate', 'N/A')}\n"
+        response += f"Notes: {order.get('note', 'None')}\n"
+        response += f"Additional Notes: {order.get('note2', 'None')}\n"
+        
+        if order.get("positions"):
+            response += f"\nORDER POSITIONS ({len(order['positions'])} items):\n"
+            response += "-" * 80 + "\n"
+            
+            total_order_value = 0
+            for pos in order["positions"]:
+                line_total = pos.get("netPricePerUnit", 0) * pos.get("targetQuantity", 0)
+                total_order_value += line_total
+                
+                response += f"Position {pos.get('positionNo', 'N/A')}: {pos.get('itemNo', 'N/A')}\n"
+                response += f"  External Ref: {pos.get('positionNoExt', 'N/A')}\n"
+                response += f"  Status: {pos.get('status', 'N/A')}\n"
+                response += f"  Quantity - Target: {pos.get('targetQuantity', 0)}, Actual: {pos.get('actualQuantity', 0)}, Delivered: {pos.get('deliveredQuantity', 0)}\n"
+                response += f"  Price: €{pos.get('netPricePerUnit', 0):.2f} per unit\n"
+                response += f"  Line Total: €{line_total:.2f}\n"
+                response += f"  Tax: {pos.get('taxRate', 0)}% ({pos.get('taxKey', 'N/A')})\n"
+                response += f"  Discount: {pos.get('discount', 0)}%\n"
+                response += f"  Currency: {pos.get('currency', 'N/A')}\n"
+                response += f"  Delivery Date: {pos.get('deliveryDate', 'N/A')}\n"
+                if pos.get('note'):
+                    response += f"  Notes: {pos.get('note')}\n"
+                response += "-" * 40 + "\n"
+                
+            response += f"\nTOTAL ORDER VALUE: €{total_order_value:.2f}\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving customer order details: {str(e)}"
+
+@mcp.tool()
+async def get_newest_orders(max_results: int = 25, since_days: int = 7) -> str:
+    """
+    Get the newest customer orders (typically INCOMPLETE, VALID, INVALID status - not yet released for production).
+    These are orders most likely in pre-production phase that haven't been released yet.
+    
+    Args:
+        max_results: Maximum number of results to return (default: 25)
+        since_days: Look for orders from the last N days (default: 7)
+        
+    Returns:
+        Formatted list of newest orders
+    """
+    # Calculate the date threshold
+    since_date = datetime.now() - timedelta(days=since_days)
+    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+    
+    params = {
+        "since": since_iso,
+        "size": min(max_results, 50)
+    }
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No orders found in the last {since_days} days."
+            
+        orders = result["collection"]
+        
+        # Filter for "newest" status categories
+        newest_orders = []
+        for order in orders:
+            status_category = get_order_status_category(order.get('status', ''))
+            if status_category == "NEWEST":
+                newest_orders.append(order)
+        
+        if not newest_orders:
+            return f"No 'newest' orders (pre-production status) found in the last {since_days} days."
+        
+        total_found = len(newest_orders)
+        
+        response = f"NEWEST ORDERS (Pre-production, last {since_days} days) - {total_found} orders:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in newest_orders[:max_results]:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving newest orders: {str(e)}"
+
+@mcp.tool()
+async def get_released_orders(max_results: int = 25, since_days: int = 30) -> str:
+    """
+    Get orders that are released for production (RELEASED, SCHEDULED, IN_PRODUCTION status).
+    These orders are currently in the manufacturing phase.
+    
+    Args:
+        max_results: Maximum number of results to return (default: 25)
+        since_days: Look for orders from the last N days (default: 30)
+        
+    Returns:
+        Formatted list of released orders
+    """
+    # Calculate the date threshold
+    since_date = datetime.now() - timedelta(days=since_days)
+    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+    
+    params = {
+        "since": since_iso,
+        "size": min(max_results, 50)
+    }
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No orders found in the last {since_days} days."
+            
+        orders = result["collection"]
+        
+        # Filter for "released" status categories
+        released_orders = []
+        for order in orders:
+            status_category = get_order_status_category(order.get('status', ''))
+            if status_category == "RELEASED":
+                released_orders.append(order)
+        
+        if not released_orders:
+            return f"No 'released' orders (in production) found in the last {since_days} days."
+        
+        total_found = len(released_orders)
+        
+        response = f"RELEASED ORDERS (In production, last {since_days} days) - {total_found} orders:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in released_orders[:max_results]:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving released orders: {str(e)}"
+
+@mcp.tool()
+async def get_completed_orders(max_results: int = 25, since_days: int = 30) -> str:
+    """
+    Get completed orders (COMPLETED, DELIVERED, INVOICED status).
+    These orders have been finished and delivered/invoiced.
+    
+    Args:
+        max_results: Maximum number of results to return (default: 25)
+        since_days: Look for orders from the last N days (default: 30)
+        
+    Returns:
+        Formatted list of completed orders
+    """
+    # Calculate the date threshold
+    since_date = datetime.now() - timedelta(days=since_days)
+    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+    
+    params = {
+        "since": since_iso,
+        "size": min(max_results, 50)
+    }
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No orders found in the last {since_days} days."
+            
+        orders = result["collection"]
+        
+        # Filter for "completed" status categories
+        completed_orders = []
+        for order in orders:
+            status_category = get_order_status_category(order.get('status', ''))
+            if status_category == "COMPLETED":
+                completed_orders.append(order)
+        
+        if not completed_orders:
+            return f"No 'completed' orders (delivered/invoiced) found in the last {since_days} days."
+        
+        total_found = len(completed_orders)
+        
+        response = f"COMPLETED ORDERS (Delivered/Invoiced, last {since_days} days) - {total_found} orders:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in completed_orders[:max_results]:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving completed orders: {str(e)}"
+
+@mcp.tool()
+async def search_orders_advanced(
+    search_term: str, 
+    max_results: int = 25,
+    status_category: Optional[str] = None,
+    customer_no: Optional[str] = None,
+    since_date: Optional[str] = None
+) -> str:
+    """
+    Advanced search for customer orders with multiple filter options.
+    
+    Args:
+        search_term: Search keyword for order numbers and external references (case-insensitive)
+        max_results: Maximum number of results to return (default: 25)
+        status_category: Filter by business category: 'newest', 'released', 'completed', or 'other'
+        customer_no: Filter by exact customer number
+        since_date: Filter orders modified since this date (ISO format: 2024-01-01T00:00:00)
+        
+    Returns:
+        Formatted search results with enhanced filtering
+    """
+    params = {
+        "searchBy": search_term,
+        "size": min(max_results, 50)
+    }
+    
+    if customer_no:
+        params["customerNo"] = customer_no
+    if since_date:
+        params["since"] = since_date
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No customer orders found matching search term: '{search_term}'"
+            
+        orders = result["collection"]
+        
+        # Apply status category filter if specified
+        if status_category:
+            category_upper = status_category.upper()
+            filtered_orders = []
+            for order in orders:
+                order_category = get_order_status_category(order.get('status', ''))
+                if order_category == category_upper:
+                    filtered_orders.append(order)
+            orders = filtered_orders
+        
+        if not orders:
+            category_text = f" in category '{status_category}'" if status_category else ""
+            return f"No orders found matching '{search_term}'{category_text}"
+        
+        total_found = result.get("records", len(orders))
+        
+        # Build filter description
+        filter_parts = [f"Search: '{search_term}'"]
+        if status_category:
+            filter_parts.append(f"Category: {status_category}")
+        if customer_no:
+            filter_parts.append(f"Customer: {customer_no}")
+        if since_date:
+            filter_parts.append(f"Since: {since_date}")
+        
+        filter_text = " | ".join(filter_parts)
+        
+        response = f"ADVANCED SEARCH RESULTS ({len(orders)} of {total_found} matches) | {filter_text}:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in orders:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error searching customer orders: {str(e)}"
+
+@mcp.tool()
+async def get_modified_orders(
+    since_date: str, 
+    max_results: int = 25,
+    status_category: Optional[str] = None,
+    customer_no: Optional[str] = None
+) -> str:
+    """
+    Get customer orders that have been modified since a specific date.
+    This helps distinguish between orders that have been recently modified vs newly created.
+    
+    Args:
+        since_date: Show orders modified since this date (ISO format: 2024-01-01T00:00:00)
+        max_results: Maximum number of results to return (default: 25)
+        status_category: Filter by business category: 'newest', 'released', 'completed', or 'other'
+        customer_no: Filter by exact customer number
+        
+    Returns:
+        Formatted list of recently modified orders
+    """
+    params = {
+        "since": since_date,
+        "size": min(max_results, 50)
+    }
+    
+    if customer_no:
+        params["customerNo"] = customer_no
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No customer orders found modified since {since_date}"
+            
+        orders = result["collection"]
+        
+        # Apply status category filter if specified
+        if status_category:
+            category_upper = status_category.upper()
+            filtered_orders = []
+            for order in orders:
+                order_category = get_order_status_category(order.get('status', ''))
+                if order_category == category_upper:
+                    filtered_orders.append(order)
+            orders = filtered_orders
+        
+        if not orders:
+            category_text = f" in category '{status_category}'" if status_category else ""
+            return f"No orders found modified since {since_date}{category_text}"
+        
+        total_found = result.get("records", len(orders))
+        
+        # Build filter description
+        filter_parts = [f"Modified since: {since_date}"]
+        if status_category:
+            filter_parts.append(f"Category: {status_category}")
+        if customer_no:
+            filter_parts.append(f"Customer: {customer_no}")
+        
+        filter_text = " | ".join(filter_parts)
+        
+        response = f"MODIFIED ORDERS ({len(orders)} of {total_found} total) | {filter_text}:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in orders:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving modified orders: {str(e)}"
+
+@mcp.tool()
+async def get_recent_orders(days: int = 30, max_results: int = 25) -> str:
+    """
+    Get customer orders from the last specified number of days (based on modification date).
+    Orders are automatically sorted by newest first.
+    
+    Args:
+        days: Number of days back to search (default: 30)
+        max_results: Maximum number of results to return (default: 25)
+        
+    Returns:
+        Formatted list of recent orders with enhanced status interpretation
+    """
+    # Calculate the date threshold
+    since_date = datetime.now() - timedelta(days=days)
+    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+    
+    params = {
+        "since": since_iso,
+        "size": min(max_results, 50)
+    }
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No customer orders found in the last {days} days"
+            
+        orders = result["collection"]
+        total_found = result.get("records", 0)
+        
+        response = f"RECENT ORDERS (Last {days} days, sorted newest first) - ({len(orders)} of {total_found} total):\n"
+        response += "=" * 80 + "\n"
+        
+        for order in orders:
+            response += format_customer_order(order, show_positions=False)
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving recent orders: {str(e)}"
+
+@mcp.tool()
+async def get_orders_by_item(
+    item_no: str, 
+    max_results: int = 25,
+    status_category: Optional[str] = None,
+    since_date: Optional[str] = None
+) -> str:
+    """
+    Get customer orders that contain a specific item number with enhanced filtering.
+    Orders are automatically sorted by newest first.
+    
+    Args:
+        item_no: Item number to search for in order positions
+        max_results: Maximum number of results to return (default: 25)
+        status_category: Filter by business category: 'newest', 'released', 'completed', or 'other'
+        since_date: Filter orders modified since this date (ISO format: 2024-01-01T00:00:00)
+        
+    Returns:
+        Formatted list of orders containing the specified item with enhanced status interpretation
+    """
+    params = {
+        "itemNo": item_no,
+        "size": min(max_results, 50)
+    }
+    
+    if since_date:
+        params["since"] = since_date
+    
+    try:
+        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        
+        if not result.get("collection"):
+            return f"No customer orders found containing item: {item_no}"
+            
+        orders = result["collection"]
+        
+        # Apply status category filter if specified
+        if status_category:
+            category_upper = status_category.upper()
+            filtered_orders = []
+            for order in orders:
+                order_category = get_order_status_category(order.get('status', ''))
+                if order_category == category_upper:
+                    filtered_orders.append(order)
+            orders = filtered_orders
+        
+        if not orders:
+            category_text = f" in category '{status_category}'" if status_category else ""
+            return f"No orders found containing item '{item_no}'{category_text}"
+        
+        total_found = result.get("records", len(orders))
+        
+        # Build filter description
+        filter_parts = [f"Item: {item_no}"]
+        if status_category:
+            filter_parts.append(f"Category: {status_category}")
+        if since_date:
+            filter_parts.append(f"Since: {since_date}")
+        
+        filter_text = " | ".join(filter_parts)
+        
+        response = f"ORDERS CONTAINING ITEM ({len(orders)} of {total_found} total) | {filter_text}:\n"
+        response += "=" * 80 + "\n"
+        
+        for order in orders:
+            response += format_customer_order(order, show_positions=False)
+            # Highlight the specific item in this order
+            if order.get("positions"):
+                matching_positions = [p for p in order["positions"] if item_no.lower() in p.get("itemNo", "").lower()]
+                if matching_positions:
+                    response += "  Matching positions:\n"
+                    for pos in matching_positions:
+                        response += f"    • {pos.get('itemNo', 'N/A')} (Qty: {pos.get('targetQuantity', 0)}, €{pos.get('netPricePerUnit', 0):.2f}/unit)\n"
+            response += "-" * 80 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving orders by item: {str(e)}"
+
+# ================================================================================================
+# PRODUCTION ORDERS API FUNCTIONS
+# ================================================================================================
+
+@mcp.tool()
+async def get_production_orders(
+    size: int = 25,
+    page: int = 1,
+    status: Optional[int] = None,
+    search_term: Optional[str] = None,
+    since_date: Optional[str] = None,
+    get_latest: bool = True,
+    max_pages: int = 1
+) -> str:
+    """
+    Get production orders with filtering options.
+    
+    Args:
+        size: Number of records per page (max 50, default: 25)
+        page: Page number (1-based, default: 1)
+        status: Optional status filter (integer)
+        search_term: Search keyword for OrderNo, OrderNoExt, and Description (supports wildcards with %)
+        since_date: Optional ISO 8601 date/time filter (e.g., "2024-01-01T00:00:00")
+        get_latest: If True, automatically gets recent records from end of dataset (default: True)
+        max_pages: Maximum number of consecutive pages to fetch (default: 1, max: 10)
+        
+    Returns:
+        Formatted list of production orders with key details
+    """
+    # Limit max_pages for performance
+    max_pages = min(max_pages, 10)
+    
+    # Get standard parameters
+    base_params = get_standard_production_order_params(size, page, status, search_term, since_date)
+    
+    # If get_latest is True and page is 1 (default), get recent records
+    if get_latest and page == 1:
+        params = await get_recent_production_orders_params(base_params)
+        start_page = params.get('page', 0)
+    else:
+        params = base_params
+        start_page = params.get('page', 0)
+    
+    all_orders = []
+    total_pages = 0
+    total_records = 0
+    current_page_display = 0
+    
+    # Fetch multiple pages if requested
+    for page_offset in range(max_pages):
+        page_params = params.copy()
+        page_params['page'] = start_page + page_offset
+    
+        try:
+            result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", page_params)
+            
+            if not result.get("collection"):
+                if page_offset == 0:
+                    return "No production orders found with the specified criteria."
+                else:
+                    break  # No more data, stop fetching
+                    
+            orders = result["collection"]
+            all_orders.extend(orders)
+            
+            # Capture metadata from first successful request
+            if page_offset == 0:
+                total_pages = result.get("pages", 1)
+                total_records = result.get("records", 0)
+                current_page_display = result.get("currentPage", 0) + 1
+                
+        except Exception as e:
+            if page_offset == 0:
+                return f"Error retrieving production orders: {str(e)}"
+            else:
+                break  # Error fetching additional pages, stop here
+    
+    if not all_orders:
+        return "No production orders found with the specified criteria."
+    
+    # Calculate page range for display
+    end_page = current_page_display + max_pages - 1
+    if max_pages > 1:
+        page_range = f"Pages {current_page_display}-{min(end_page, total_pages)}"
+    else:
+        page_range = f"Page {current_page_display}"
+        
+    response = f"PRODUCTION ORDERS - Showing {len(all_orders)} of {total_records} orders ({page_range} of {total_pages}):\n"
+    response += "=" * 100 + "\n"
+    
+    for order in all_orders:
+        response += format_production_order(order)
+        response += "-" * 100 + "\n"
+        
+    if total_pages > 1:
+        response += "\n" + "=" * 100 + "\n"
+        response += f"📄 PAGINATION: Currently showing {page_range} of {total_pages} total pages\n"
+        if max_pages == 1 and current_page_display < total_pages:
+            response += f"💡 TIP: Use page={current_page_display + 1} or max_pages=3 to get more pages\n"
+        elif max_pages > 1 and end_page < total_pages:
+            response += f"💡 TIP: Use page={end_page + 1} to continue, or increase max_pages for more data\n"
+            
+    return response
+
+@mcp.tool()
+async def get_production_orders_for_customer_order(
+    customer_order_no: str,
+    size: int = 50
+) -> str:
+    """
+    Get all production orders related to a specific customer order.
+    
+    Args:
+        customer_order_no: Customer order number to find related production orders
+        size: Maximum number of results (default: 50)
+        
+    Returns:
+        List of production orders linked to the customer order
+    """
+    # Use wildcard search to find all production orders for this customer order
+    search_term = f"{customer_order_no}%"
+    
+    params = {
+        "size": min(size, 50),
+        "page": 0,
+        "searchBy": search_term
+    }
+    
+    try:
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
+        
+        if not result.get("collection"):
+            return f"No production orders found for customer order {customer_order_no}."
+            
+        orders = result["collection"]
+        # Filter to exact customer order matches
+        related_orders = [order for order in orders if order.get("customerOrderNo") == customer_order_no]
+        
+        if not related_orders:
+            return f"No production orders found for customer order {customer_order_no}."
+            
+        total_records = len(related_orders)
+        
+        response = f"PRODUCTION ORDERS FOR CUSTOMER ORDER {customer_order_no} - {total_records} orders found:\n"
+        response += "=" * 100 + "\n"
+        
+        for order in related_orders:
+            response += format_production_order(order, show_operations=True)
+            response += "-" * 100 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving production orders for customer order {customer_order_no}: {str(e)}"
+
+@mcp.tool()
+async def get_customer_order_for_production_order(
+    production_order_no: str
+) -> str:
+    """
+    Get the customer order details related to a specific production order.
+    
+    Args:
+        production_order_no: Production order number (e.g., "238259-001")
+        
+    Returns:
+        Customer order details for the related production order
+    """
+    # First, get the production order to find the customerOrderNo
+    search_params = {
+        "size": 10,
+        "page": 0,
+        "searchBy": production_order_no
+    }
+    
+    try:
+        prod_result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", search_params)
+        
+        if not prod_result.get("collection"):
+            return f"Production order {production_order_no} not found."
+            
+        production_order = None
+        for order in prod_result["collection"]:
+            if order.get("orderNo") == production_order_no:
+                production_order = order
+                break
+                
+        if not production_order:
+            return f"Production order {production_order_no} not found."
+            
+        customer_order_no = production_order.get("customerOrderNo")
+        if not customer_order_no:
+            return f"No customer order linked to production order {production_order_no}."
+            
+        # Now get the customer order details
+        customer_params = {
+            "size": 10,
+            "page": 0,
+            "searchBy": customer_order_no
+        }
+        
+        customer_result = await make_oseon_request("/api/v2/sales/customerOrders", customer_params)
+        
+        if not customer_result.get("collection"):
+            return f"Customer order {customer_order_no} not found."
+            
+        customer_order = None
+        for order in customer_result["collection"]:
+            if order.get("customerOrderNo") == customer_order_no:
+                customer_order = order
+                break
+                
+        if not customer_order:
+            return f"Customer order {customer_order_no} not found."
+            
+        response = f"CUSTOMER ORDER FOR PRODUCTION ORDER {production_order_no}:\n"
+        response += "=" * 100 + "\n"
+        response += format_customer_order(customer_order)
+        response += "\n" + "=" * 100 + "\n"
+        response += f"🔗 LINKED PRODUCTION ORDER:\n"
+        response += format_production_order(production_order)
+        
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving customer order for production order {production_order_no}: {str(e)}"
+
+@mcp.tool()
+async def search_orders_with_wildcards(
+    search_pattern: str,
+    search_in: str = "both",
+    size: int = 25
+) -> str:
+    """
+    Search for orders using wildcard patterns (% symbol).
+    
+    Args:
+        search_pattern: Search pattern with wildcards (e.g., "238259%", "%metal%", "200%")
+        search_in: Where to search - "customer" for customer orders, "production" for production orders, "both" for both (default: "both")
+        size: Maximum results per order type (default: 25)
+        
+    Returns:
+        Search results from customer orders, production orders, or both
+    """
+    response = f"WILDCARD SEARCH RESULTS FOR PATTERN: '{search_pattern}'\n"
+    response += "=" * 100 + "\n\n"
+    
+    try:
+        if search_in in ["customer", "both"]:
+            # Search customer orders
+            customer_params = {
+                "size": min(size, 50),
+                "page": 0,
+                "searchBy": search_pattern
+            }
+            
+            customer_result = await make_oseon_request("/api/v2/sales/customerOrders", customer_params)
+            
+            if customer_result.get("collection"):
+                customer_orders = customer_result["collection"]
+                response += f"📋 CUSTOMER ORDERS ({len(customer_orders)} found):\n"
+                response += "-" * 100 + "\n"
+                
+                for order in customer_orders:
+                    response += format_customer_order(order)
+                    response += "-" * 50 + "\n"
+            else:
+                response += "📋 CUSTOMER ORDERS: No matches found\n"
+                
+            response += "\n"
+            
+        if search_in in ["production", "both"]:
+            # Search production orders
+            production_params = {
+                "size": min(size, 50),
+                "page": 0,
+                "searchBy": search_pattern
+            }
+            
+            production_result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", production_params)
+            
+            if production_result.get("collection"):
+                production_orders = production_result["collection"]
+                response += f"🏭 PRODUCTION ORDERS ({len(production_orders)} found):\n"
+                response += "-" * 100 + "\n"
+                
+                for order in production_orders:
+                    response += format_production_order(order)
+                    response += "-" * 50 + "\n"
+            else:
+                response += "🏭 PRODUCTION ORDERS: No matches found\n"
+                
+        return response
+        
+    except Exception as e:
+        return f"Error performing wildcard search: {str(e)}"
+
+@mcp.tool()
+async def get_production_orders_bulk(
+    size: int = 50,
+    start_page: int = 1,
+    num_pages: int = 3,
+    status: Optional[int] = None,
+    search_term: Optional[str] = None,
+    since_date: Optional[str] = None
+) -> str:
+    """
+    Get multiple pages of production orders in bulk.
+    Perfect for when you need large amounts of data (like pages 234, 235, 236).
+    
+    Args:
+        size: Number of records per page (max 50, default: 50)
+        start_page: Starting page number (1-based, default: 1)
+        num_pages: Number of consecutive pages to fetch (default: 3, max: 10)
+        status: Optional status filter (integer)
+        search_term: Search keyword with wildcards (e.g., "238259%")
+        since_date: Optional ISO 8601 date filter
+        
+    Returns:
+        Formatted list of production orders from multiple pages
+    """
+    # Limit for performance
+    num_pages = min(num_pages, 10)
+    size = min(size, 50)
+    
+    all_orders = []
+    total_pages = 0
+    total_records = 0
+    pages_fetched = []
+    
+    for page_offset in range(num_pages):
+        current_page = start_page + page_offset
+        params = get_standard_production_order_params(size, current_page, status, search_term, since_date)
+        
+        try:
+            result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
+            
+            if not result.get("collection"):
+                if page_offset == 0:
+                    return f"No production orders found starting from page {start_page}."
+                else:
+                    break  # No more data
+                    
+            orders = result["collection"]
+            all_orders.extend(orders)
+            pages_fetched.append(current_page)
+            
+            # Capture metadata from first request
+            if page_offset == 0:
+                total_pages = result.get("pages", 1)
+                total_records = result.get("records", 0)
+                
+        except Exception as e:
+            if page_offset == 0:
+                return f"Error retrieving production orders from page {current_page}: {str(e)}"
+            else:
+                break  # Stop on error
+    
+    if not all_orders:
+        return f"No production orders found starting from page {start_page}."
+    
+    # Format page range
+    if len(pages_fetched) > 1:
+        page_range = f"Pages {pages_fetched[0]}-{pages_fetched[-1]}"
+    else:
+        page_range = f"Page {pages_fetched[0]}"
+        
+    response = f"PRODUCTION ORDERS BULK - {len(all_orders)} orders from {page_range} of {total_pages} total pages:\n"
+    response += "=" * 100 + "\n"
+    response += f"📊 Total records in system: {total_records}\n"
+    response += "=" * 100 + "\n"
+    
+    for order in all_orders:
+        response += format_production_order(order)
+        response += "-" * 100 + "\n"
+        
+    response += "\n" + "=" * 100 + "\n"
+    response += f"📄 BULK FETCH: Retrieved {len(pages_fetched)} pages ({len(all_orders)} orders)\n"
+    if pages_fetched[-1] < total_pages:
+        next_start = pages_fetched[-1] + 1
+        response += f"💡 TIP: Use start_page={next_start} to continue, or increase num_pages for more data\n"
+        
+    return response
+
+@mcp.tool()
+async def get_customer_orders_bulk(
+    size: int = 50,
+    start_page: int = 1,
+    num_pages: int = 3,
+    status: Optional[str] = None,
+    customer_no: Optional[str] = None,
+    search_term: Optional[str] = None,
+    since_date: Optional[str] = None
+) -> str:
+    """
+    Get multiple pages of customer orders in bulk.
+    Perfect for when you need large amounts of data.
+    
+    Args:
+        size: Number of records per page (max 50, default: 50)
+        start_page: Starting page number (1-based, default: 1)
+        num_pages: Number of consecutive pages to fetch (default: 3, max: 10)
+        status: Filter by order status
+        customer_no: Filter by customer number
+        search_term: Search with wildcards (e.g., "238259%")
+        since_date: Optional ISO 8601 date filter
+        
+    Returns:
+        Formatted list of customer orders from multiple pages
+    """
+    # Limit for performance
+    num_pages = min(num_pages, 10)
+    size = min(size, 50)
+    
+    all_orders = []
+    total_pages = 0
+    total_records = 0
+    pages_fetched = []
+    
+    for page_offset in range(num_pages):
+        current_page = start_page + page_offset
+        params = get_standard_customer_order_params(size, current_page, status, customer_no, since_date, search_term, None)
+        
+        try:
+            result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+            
+            if not result.get("collection"):
+                if page_offset == 0:
+                    return f"No customer orders found starting from page {start_page}."
+                else:
+                    break  # No more data
+                    
+            orders = result["collection"]
+            all_orders.extend(orders)
+            pages_fetched.append(current_page)
+            
+            # Capture metadata from first request
+            if page_offset == 0:
+                total_pages = result.get("pages", 1)
+                total_records = result.get("records", 0)
+                
+        except Exception as e:
+            if page_offset == 0:
+                return f"Error retrieving customer orders from page {current_page}: {str(e)}"
+            else:
+                break  # Stop on error
+    
+    if not all_orders:
+        return f"No customer orders found starting from page {start_page}."
+    
+    # Format page range
+    if len(pages_fetched) > 1:
+        page_range = f"Pages {pages_fetched[0]}-{pages_fetched[-1]}"
+    else:
+        page_range = f"Page {pages_fetched[0]}"
+        
+    response = f"CUSTOMER ORDERS BULK - {len(all_orders)} orders from {page_range} of {total_pages} total pages:\n"
+    response += "=" * 100 + "\n"
+    response += f"📊 Total records in system: {total_records}\n"
+    response += "=" * 100 + "\n"
+    
+    for order in all_orders:
+        response += format_customer_order(order)
+        response += "-" * 100 + "\n"
+        
+    response += "\n" + "=" * 100 + "\n"
+    response += f"📄 BULK FETCH: Retrieved {len(pages_fetched)} pages ({len(all_orders)} orders)\n"
+    if pages_fetched[-1] < total_pages:
+        next_start = pages_fetched[-1] + 1
+        response += f"💡 TIP: Use start_page={next_start} to continue, or increase num_pages for more data\n"
+        
+    return response
+
+@mcp.tool()
+async def get_production_status_overview(days_back: int = 30, max_results: int = 100) -> str:
+    """
+    Get an overview of production status for recent orders.
+    Perfect for answering "How's production?" questions.
+    
+    Args:
+        days_back: Look at orders from the last N days (default: 30)
+        max_results: Maximum number of orders to analyze (default: 100)
+        
+    Returns:
+        Production status summary with counts by status and workplace
+    """
+    # Use recent date filter for meaningful data
+    since_date = datetime.now() - timedelta(days=days_back)
+    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+    
+    # Get standard parameters with date filter
+    base_params = get_standard_production_order_params(50, 1, None, None, since_iso)
+    
+    # Get recent records
+    params = await get_recent_production_orders_params(base_params, max_results)
+    
+    try:
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
+        
+        if not result.get("collection"):
+            return f"No production orders found in the last {days_back} days."
+            
+        orders = result["collection"]
+        
+        # Analyze status distribution
+        status_counts = {}
+        workplace_counts = {}
+        overdue_count = 0
+        total_orders = len(orders)
+        
+        for order in orders:
+            # Count by status
+            status = order.get("status", "Unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
+            # Count by active workplace (from operations)
+            active_workplaces = set()
+            for operation in order.get("operations", []):
+                if operation.get("status") not in ["COMPLETED", "CANCELED"]:
+                    workplace = operation.get("workplaceName", "Unknown")
+                    active_workplaces.add(workplace)
+            
+            for workplace in active_workplaces:
+                workplace_counts[workplace] = workplace_counts.get(workplace, 0) + 1
+            
+            # Check if overdue
+            due_date_str = order.get("dueDate")
+            if due_date_str and is_order_overdue(due_date_str, order.get("status")):
+                overdue_count += 1
+        
+        response = f"PRODUCTION STATUS OVERVIEW (Last {days_back} days) - {total_orders} orders analyzed:\n"
+        response += "=" * 100 + "\n\n"
+        
+        # Status summary
+        response += "📊 STATUS DISTRIBUTION:\n"
+        for status, count in sorted(status_counts.items()):
+            percentage = (count / total_orders) * 100
+            response += f"   Status {status}: {count} orders ({percentage:.1f}%)\n"
+        
+        response += f"\n⚠️  OVERDUE ORDERS: {overdue_count} ({(overdue_count/total_orders)*100:.1f}%)\n\n"
+        
+        # Active workplaces
+        if workplace_counts:
+            response += "🏭 ACTIVE WORKPLACES:\n"
+            for workplace, count in sorted(workplace_counts.items(), key=lambda x: x[1], reverse=True):
+                response += f"   {workplace}: {count} active orders\n"
+        
+        response += "\n💡 Use 'get_overdue_production_orders' to see which orders are behind schedule.\n"
+        response += "💡 Use 'get_active_production_orders' to see orders currently in progress.\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error getting production status overview: {str(e)}"
+
+@mcp.tool()
+async def get_overdue_production_orders(max_results: int = 25, days_back: int = 90) -> str:
+    """
+    Get production orders that are past their due date.
+    
+    Args:
+        max_results: Maximum number of results to return (default: 25)
+        days_back: Look at orders from last N days (default: 90)
+        
+    Returns:
+        List of overdue production orders with urgency indicators
+    """
+    # Use recent date filter for meaningful data
+    since_date = datetime.now() - timedelta(days=days_back)
+    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+    
+    # Get standard parameters with date filter
+    base_params = get_standard_production_order_params(50, 1, None, None, since_iso)
+    
+    # Get recent records (more than max_results to filter for overdue)
+    params = await get_recent_production_orders_params(base_params, max_results * 3)
+    
+    try:
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
+        
+        if not result.get("collection"):
+            return f"No production orders found in the last {days_back} days."
+            
+        orders = result["collection"]
+        overdue_orders = []
+        
+        for order in orders:
+            due_date_str = order.get("dueDate")
+            if due_date_str and is_order_overdue(due_date_str, order.get("status")):
+                # Calculate days overdue
+                try:
+                    due_date = datetime.strptime(due_date_str, "%d.%m.%Y %H:%M:%S")
+                    days_overdue = (datetime.now() - due_date).days
+                    order["days_overdue"] = days_overdue
+                    overdue_orders.append(order)
+                except ValueError:
+                    pass  # Skip if date parsing fails
+        
+        if not overdue_orders:
+            return "🎉 No overdue production orders found!"
+        
+        # Sort by days overdue (most urgent first)
+        overdue_orders.sort(key=lambda x: x.get("days_overdue", 0), reverse=True)
+        
+        response = f"⚠️ OVERDUE PRODUCTION ORDERS - {len(overdue_orders)} orders behind schedule:\n"
+        response += "=" * 100 + "\n"
+        
+        for order in overdue_orders[:max_results]:
+            days_overdue = order.get("days_overdue", 0)
+            urgency = "🔴 CRITICAL" if days_overdue > 7 else "🟡 URGENT" if days_overdue > 3 else "🟠 OVERDUE"
+            
+            response += f"{urgency} ({days_overdue} days overdue)\n"
+            response += format_production_order(order, show_operations=True)
+            response += "-" * 100 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving overdue production orders: {str(e)}"
+
+@mcp.tool()
+async def get_active_production_orders(max_results: int = 25, workplace: Optional[str] = None) -> str:
+    """
+    Get production orders that are currently active (in progress).
+    
+    Args:
+        max_results: Maximum number of results to return (default: 25)
+        workplace: Optional filter by workplace name (case-insensitive)
+        
+    Returns:
+        List of active production orders with current operation details
+    """
+    params = {"size": min(max_results, 50)}
+    
+    try:
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
+        
+        if not result.get("collection"):
+            return "No production orders found."
+            
+        orders = result["collection"]
+        active_orders = []
+        
+        for order in orders:
+            # Check if order has active operations
+            active_operations = []
+            for operation in order.get("operations", []):
+                op_status = operation.get("status", "")
+                if op_status not in ["COMPLETED", "CANCELED"]:
+                    # Filter by workplace if specified
+                    if workplace:
+                        op_workplace = operation.get("workplaceName", "").lower()
+                        if workplace.lower() not in op_workplace:
+                            continue
+                    active_operations.append(operation)
+            
+            if active_operations:
+                order["active_operations"] = active_operations
+                active_orders.append(order)
+        
+        if not active_orders:
+            workplace_filter = f" at workplace '{workplace}'" if workplace else ""
+            return f"No active production orders found{workplace_filter}."
+        
+        response = f"🔄 ACTIVE PRODUCTION ORDERS{f' (Workplace: {workplace})' if workplace else ''} - {len(active_orders)} orders:\n"
+        response += "=" * 100 + "\n"
+        
+        for order in active_orders[:max_results]:
+            response += format_production_order(order, show_operations=True, highlight_active=True)
+            response += "-" * 100 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error retrieving active production orders: {str(e)}"
+
+@mcp.tool()
+async def search_production_orders(
+    search_term: str,
+    max_results: int = 25,
+    status: Optional[int] = None
+) -> str:
+    """
+    Search production orders by OrderNo, OrderNoExt, or Description.
+    
+    Args:
+        search_term: Search keyword for OrderNo, OrderNoExt, and Description
+        max_results: Maximum number of results to return (default: 25)
+        status: Optional status filter (integer)
+        
+    Returns:
+        Formatted list of matching production orders
+    """
+    params = {
+        "searchBy": search_term,
+        "size": min(max_results, 50)
+    }
+    
+    if status is not None:
+        params["status"] = status
+    
+    try:
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
+        
+        if not result.get("collection"):
+            return f"No production orders found matching '{search_term}'."
+            
+        orders = result["collection"]
+        total_records = result.get("records", len(orders))
+        
+        response = f"🔍 PRODUCTION ORDER SEARCH RESULTS for '{search_term}' - {len(orders)} of {total_records} orders:\n"
+        response += "=" * 100 + "\n"
+        
+        for order in orders:
+            response += format_production_order(order, show_operations=True)
+            response += "-" * 100 + "\n"
+            
+        return response
+        
+    except Exception as e:
+        return f"Error searching production orders: {str(e)}"
+
+def format_production_order(order: Dict[str, Any], show_operations: bool = False, highlight_active: bool = False) -> str:
+    """Format a production order for display."""
+    order_no = order.get("orderNo", "N/A")
+    description = order.get("description", "")
+    status = order.get("status", "N/A")
+    customer_name = order.get("customerName", "N/A")
+    customer_order_no = order.get("customerOrderNo", "N/A")
+    part_no = order.get("partNo", "N/A")
+    part_description = order.get("partDescription", "")
+    due_date = order.get("dueDate", "N/A")
+    desired_qty = order.get("desiredQuantity", "N/A")
+    processed_parts = order.get("processedParts", 0)
+    
+    result = f"📋 Order: {order_no}"
+    if description:
+        result += f" - {description}"
+    result += f"\n"
+    
+    result += f"   Status: {status} | Customer: {customer_name} (Order: {customer_order_no})\n"
+    result += f"   Part: {part_no}"
+    if part_description:
+        result += f" - {part_description}"
+    result += f"\n"
+    result += f"   Due: {due_date} | Qty: {processed_parts}/{desired_qty}\n"
+    
+    if show_operations and order.get("operations"):
+        operations = order.get("active_operations", order.get("operations", []))
+        if operations:
+            result += f"   🔧 Operations:\n"
+            for op in operations[:3]:  # Show max 3 operations
+                op_no = op.get("operationNo", "N/A")
+                activity = op.get("activity", "N/A")
+                workplace = op.get("workplaceName", "N/A")
+                op_status = op.get("status", "N/A")
+                
+                # Highlight active operations
+                status_indicator = "🔄" if highlight_active and op_status not in ["COMPLETED", "CANCELED"] else "⚪"
+                
+                result += f"      {status_indicator} {op_no}: {activity} @ {workplace} ({op_status})\n"
+            
+            if len(operations) > 3:
+                result += f"      ... and {len(operations) - 3} more operations\n"
+    
+    return result
+
+def main():
+    """Main entry point for the MCP server.
+    
+    Starts the MCP server using stdio transport for Claude Desktop integration.
+    """
+    mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    main()
