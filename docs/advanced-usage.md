@@ -117,6 +117,29 @@ check_production_order_overdue(
 
 ## Performance Optimization
 
+### Visual Dashboard Creation Workflow
+
+**For instant Claude artifacts:**
+
+1. **Get Template**: `get_production_dashboard_template()` or `get_sales_dashboard_template()`
+2. **Get Real Data**: `get_production_dashboard()` or `get_sales_dashboard()`  
+3. **Claude Creates**: Visual dashboard artifact with real data
+4. **Result**: Professional React dashboard ready to use
+
+**Example workflow:**
+```bash
+# Step 1: Get template
+get_production_dashboard_template()
+
+# Step 2: Get current data  
+get_production_dashboard()
+
+# Step 3: Ask Claude
+"Create a dashboard artifact using the template with this real data"
+
+# Result: Instant professional dashboard with live data!
+```
+
 ### Best Practices
 
 1. **Use single dashboard commands for consistency:**
@@ -127,7 +150,11 @@ check_production_order_overdue(
    # Sales meeting - always same format
    get_sales_dashboard()
    
-   # Perfect for AI agents - predictable structure every time
+   # Visual dashboards - instant React artifacts
+   get_production_dashboard_template()
+   get_sales_dashboard_template()
+   
+   # Perfect for AI agents - predictable structure + instant visuals
    # Limited data (25 records per section) prevents overload
    ```
 
@@ -333,12 +360,20 @@ get_production_dashboard()    # Always same 4-section structure, max 25 records 
 get_sales_dashboard()         # Always same 4-section structure, max 25 records each
 ```
 
+**Instant Visual Templates (Claude Artifacts):**
+```bash
+get_production_dashboard_template()    # Ready React/TypeScript component
+get_sales_dashboard_template()         # Ready React/TypeScript component  
+```
+
 **Benefits:**
 - **Consistent Structure**: Same format every time for AI agent reliability
+- **Instant Artifacts**: Precompiled React components for visual dashboards
 - **Limited Results**: Max 25 records per section prevents data overload
 - **Error Handling**: Graceful fallbacks if any section fails
 - **Timestamped**: Shows when data was generated
-- **Summary Line**: Quick overview numbers for each section
+- **Professional Design**: Modern dashboard UI with Tailwind CSS
+- **TypeScript Ready**: Full type safety with interfaces included
 
 ### Main Tools (Auto-pagination)
 - `get_customer_orders()` - Up to 200 customer order records

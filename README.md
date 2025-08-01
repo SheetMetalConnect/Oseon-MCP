@@ -57,13 +57,16 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 
 6. **Start using it** - Try asking Claude:
    - **"Get production dashboard"** (consistent management overview)
-   - **"Get sales dashboard"** (consistent management overview) 
+   - **"Get sales dashboard"** (consistent management overview)
+   - **"Get production dashboard template"** (instant React artifact)
+   - **"Get sales dashboard template"** (instant React artifact)
    - "Show me the latest customer orders"
    - "Find orders containing 'steel'"
 
 ## Features
 
-- **🎯 AI Agent Reliable**: `get_production_dashboard()` and `get_sales_dashboard()` always return identical structure
+- **🎯 AI Agent Reliable**: Dashboards always return identical structure for consistent agent responses
+- **🎨 Instant Artifacts**: Precompiled React/TypeScript templates for Claude to create visual dashboards
 - **📊 Consistent Data**: Limited results (25 per section) prevent overload, perfect for management meetings
 - **⚡ Efficient Design**: All functions use proper API filtering instead of client-side scanning
 - **🔗 Cross-System Linking**: Connect customer orders to production orders seamlessly
@@ -77,8 +80,12 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 ## Available Tools
 
 ### 🎯 Management Dashboards (AI Agent Optimized)
-- **get_production_dashboard** - Always same structure: active work, pipeline, completions, issues (max 25 each)
-- **get_sales_dashboard** - Always same structure: new business, ready for production, delivery issues, changes (max 25 each)
+- **get_production_dashboard** - Consistent data: active work, pipeline, completions, issues (max 25 each)
+- **get_sales_dashboard** - Consistent data: new business, ready for production, delivery issues, changes (max 25 each)
+
+### 🎨 Dashboard Templates (Instant Artifacts)
+- **get_production_dashboard_template** - Ready React/TypeScript component for Claude artifacts
+- **get_sales_dashboard_template** - Ready React/TypeScript component for Claude artifacts
 
 ### Customer Orders
 - **get_customer_orders** - Main tool: auto-fetches up to 200 records with smart pagination
@@ -111,11 +118,13 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 
 ### 💬 Ask Claude These Questions:
 
-**Management Dashboard (Consistent Single Commands):**
-- 🏭 **`get_production_dashboard()`** → Always returns same structured format: active work, pipeline, completions, issues
-- 📊 **`get_sales_dashboard()`** → Always returns same structured format: new orders, ready for production, delivery issues, changes
+**Management Dashboards & Visual Templates:**
+- 🏭 **`get_production_dashboard()`** → Consistent data format: active work, pipeline, completions, issues
+- 📊 **`get_sales_dashboard()`** → Consistent data format: new orders, ready for production, delivery issues, changes
+- 🎨 **`get_production_dashboard_template()`** → Ready React component for instant Claude artifacts
+- 🎨 **`get_sales_dashboard_template()`** → Ready React component for instant Claude artifacts
 
-*Perfect for AI agents - consistent data structure every time, limited results for reliability*
+*Perfect for AI agents - consistent data + instant visual dashboard creation*
 
 **Quick Status Checks:**
 - "Show me recent customer orders"
@@ -258,7 +267,7 @@ This project demonstrates connecting AI agents to manufacturing systems. If you'
 
 **Created by:** Luke van Enkhuizen ([Sheet Metal Connect e.U.](https://www.sheetmetalconnect.com/))  
 **Contact:** luke@sheetmetalconnect.com  
-**Development:** Built with Cursor & Claude Sonnet
+**Development:** Built with Cursor & Claude Sonnet 4 (Vibe coded)
 
 *Educational MCP demonstration for manufacturing system integration - Purpose: Demonstrate how to interact with your Oseon data through AI*
 

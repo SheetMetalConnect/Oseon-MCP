@@ -2157,6 +2157,328 @@ async def get_production_dashboard() -> str:
 
 
 @mcp.tool()
+async def get_production_dashboard_template() -> str:
+    """Get React template for production dashboard - ready for Claude artifact creation.
+    
+    Returns precompiled React/TypeScript component with:
+    - Modern dashboard design
+    - Consistent structure matching get_production_dashboard()
+    - Ready-to-use template for instant artifacts
+    - Placeholder data that can be replaced with real data
+    
+    Perfect for Claude to quickly create visual dashboards.
+    """
+    template = '''import React from 'react';
+
+interface DashboardSection {
+  name: string;
+  status: string;
+  count: number;
+  description: string;
+  timeframe: string;
+}
+
+interface ProductionDashboardData {
+  timestamp: string;
+  sections: DashboardSection[];
+  summary: {
+    active: number;
+    pipeline: number;
+    completed: number;
+    issues: number;
+  };
+}
+
+const ProductionDashboard: React.FC<{ data?: ProductionDashboardData }> = ({ data }) => {
+  // Default template data - replace with real data from get_production_dashboard()
+  const defaultData: ProductionDashboardData = {
+    timestamp: "2024-01-15 14:30:22",
+    sections: [
+      {
+        name: "Active Production",
+        status: "✅",
+        count: 12,
+        description: "12 orders currently in progress (last 7 days)",
+        timeframe: "7 days"
+      },
+      {
+        name: "Production Pipeline", 
+        status: "⏳",
+        count: 8,
+        description: "8 orders ready to start production (last 14 days)",
+        timeframe: "14 days"
+      },
+      {
+        name: "Recent Completions",
+        status: "🏆", 
+        count: 5,
+        description: "5 orders completed (last 3 days)",
+        timeframe: "3 days"
+      },
+      {
+        name: "Production Issues",
+        status: "✅",
+        count: 0,
+        description: "No production delays",
+        timeframe: "1+ days overdue"
+      }
+    ],
+    summary: { active: 12, pipeline: 8, completed: 5, issues: 0 }
+  };
+
+  const dashboardData = data || defaultData;
+
+  return (
+    <div className="p-6 bg-gray-50 min-h-screen">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-3xl">🏭</span>
+            <h1 className="text-3xl font-bold text-gray-800">Production Dashboard</h1>
+          </div>
+          <p className="text-gray-600">Last updated: {dashboardData.timestamp}</p>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+            <div className="text-2xl font-bold text-blue-700">{dashboardData.summary.active}</div>
+            <div className="text-blue-600">Active</div>
+          </div>
+          <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+            <div className="text-2xl font-bold text-yellow-700">{dashboardData.summary.pipeline}</div>
+            <div className="text-yellow-600">Pipeline</div>
+          </div>
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+            <div className="text-2xl font-bold text-green-700">{dashboardData.summary.completed}</div>
+            <div className="text-green-600">Completed</div>
+          </div>
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+            <div className="text-2xl font-bold text-red-700">{dashboardData.summary.issues}</div>
+            <div className="text-red-600">Issues</div>
+          </div>
+        </div>
+
+        {/* Detailed Sections */}
+        <div className="grid grid-cols-2 gap-6">
+          {dashboardData.sections.map((section, index) => (
+            <div key={index} className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-2xl">{section.status}</span>
+                <h3 className="text-xl font-semibold text-gray-800">{section.name}</h3>
+                <span className="ml-auto text-2xl font-bold text-gray-700">{section.count}</span>
+              </div>
+              <p className="text-gray-600 mb-2">{section.description}</p>
+              <div className="text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded">
+                Timeframe: {section.timeframe}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>💡 Use get_production_dashboard() to get real-time data for this template</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ProductionDashboard;'''
+
+    return f"""
+📊 PRODUCTION DASHBOARD TEMPLATE (React/TypeScript)
+
+Ready-to-use React component for Claude artifacts:
+
+{template}
+
+🚀 USAGE INSTRUCTIONS:
+1. Copy this entire component code
+2. Replace defaultData with real data from get_production_dashboard()
+3. Claude can instantly create visual dashboard artifacts
+4. Modern responsive design with Tailwind CSS
+5. TypeScript interfaces included for type safety
+
+💡 BENEFITS:
+- Instant artifact creation (no coding from scratch)
+- Consistent with get_production_dashboard() structure
+- Professional dashboard design
+- Responsive layout for all devices
+- Easy to customize colors and layout
+
+🔧 TO USE WITH REAL DATA:
+1. Call get_production_dashboard() to get current data
+2. Parse the structured output into the ProductionDashboardData interface
+3. Pass as props to the component
+4. Claude can do this automatically for instant dashboards!
+"""
+
+
+@mcp.tool()
+async def get_sales_dashboard_template() -> str:
+    """Get React template for sales dashboard - ready for Claude artifact creation.
+    
+    Returns precompiled React/TypeScript component with:
+    - Modern dashboard design  
+    - Consistent structure matching get_sales_dashboard()
+    - Ready-to-use template for instant artifacts
+    - Placeholder data that can be replaced with real data
+    
+    Perfect for Claude to quickly create visual dashboards.
+    """
+    template = '''import React from 'react';
+
+interface DashboardSection {
+  name: string;
+  status: string;
+  count: number;
+  description: string;
+  timeframe: string;
+}
+
+interface SalesDashboardData {
+  timestamp: string;
+  sections: DashboardSection[];
+  summary: {
+    new: number;
+    ready: number;
+    issues: number;
+    changes: number;
+  };
+}
+
+const SalesDashboard: React.FC<{ data?: SalesDashboardData }> = ({ data }) => {
+  // Default template data - replace with real data from get_sales_dashboard()
+  const defaultData: SalesDashboardData = {
+    timestamp: "2024-01-15 14:30:25",
+    sections: [
+      {
+        name: "New Business",
+        status: "💰",
+        count: 6,
+        description: "6 customer orders received (last 7 days)",
+        timeframe: "7 days"
+      },
+      {
+        name: "Ready for Production",
+        status: "🔄", 
+        count: 4,
+        description: "4 orders released to manufacturing",
+        timeframe: "current"
+      },
+      {
+        name: "Delivery Issues",
+        status: "⚠️",
+        count: 1,
+        description: "1 customer orders overdue by 1+ days",
+        timeframe: "1+ days overdue"
+      },
+      {
+        name: "Recent Changes",
+        status: "📝",
+        count: 3,
+        description: "3 orders modified (last 3 days)",
+        timeframe: "3 days"
+      }
+    ],
+    summary: { new: 6, ready: 4, issues: 1, changes: 3 }
+  };
+
+  const dashboardData = data || defaultData;
+
+  return (
+    <div className="p-6 bg-gray-50 min-h-screen">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-3xl">💼</span>
+            <h1 className="text-3xl font-bold text-gray-800">Sales Dashboard</h1>
+          </div>
+          <p className="text-gray-600">Last updated: {dashboardData.timestamp}</p>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+            <div className="text-2xl font-bold text-green-700">{dashboardData.summary.new}</div>
+            <div className="text-green-600">New Orders</div>
+          </div>
+          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+            <div className="text-2xl font-bold text-blue-700">{dashboardData.summary.ready}</div>
+            <div className="text-blue-600">Ready</div>
+          </div>
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+            <div className="text-2xl font-bold text-red-700">{dashboardData.summary.issues}</div>
+            <div className="text-red-600">Issues</div>
+          </div>
+          <div className="bg-purple-50 border-l-4 border-purple-500 p-4 rounded">
+            <div className="text-2xl font-bold text-purple-700">{dashboardData.summary.changes}</div>
+            <div className="text-purple-600">Changes</div>
+          </div>
+        </div>
+
+        {/* Detailed Sections */}
+        <div className="grid grid-cols-2 gap-6">
+          {dashboardData.sections.map((section, index) => (
+            <div key={index} className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-2xl">{section.status}</span>
+                <h3 className="text-xl font-semibold text-gray-800">{section.name}</h3>
+                <span className="ml-auto text-2xl font-bold text-gray-700">{section.count}</span>
+              </div>
+              <p className="text-gray-600 mb-2">{section.description}</p>
+              <div className="text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded">
+                Timeframe: {section.timeframe}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>💡 Use get_sales_dashboard() to get real-time data for this template</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SalesDashboard;'''
+
+    return f"""
+📊 SALES DASHBOARD TEMPLATE (React/TypeScript)
+
+Ready-to-use React component for Claude artifacts:
+
+{template}
+
+🚀 USAGE INSTRUCTIONS:
+1. Copy this entire component code
+2. Replace defaultData with real data from get_sales_dashboard()
+3. Claude can instantly create visual dashboard artifacts
+4. Modern responsive design with Tailwind CSS
+5. TypeScript interfaces included for type safety
+
+💡 BENEFITS:
+- Instant artifact creation (no coding from scratch)
+- Consistent with get_sales_dashboard() structure
+- Professional dashboard design
+- Responsive layout for all devices
+- Easy to customize colors and layout
+
+🔧 TO USE WITH REAL DATA:
+1. Call get_sales_dashboard() to get current data
+2. Parse the structured output into the SalesDashboardData interface
+3. Pass as props to the component
+4. Claude can do this automatically for instant dashboards!
+"""
+
+
+@mcp.tool()
 async def get_sales_dashboard() -> str:
     """Get sales status dashboard - consistent 4-step overview for management.
     
