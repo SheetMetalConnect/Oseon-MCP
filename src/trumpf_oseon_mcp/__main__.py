@@ -2695,6 +2695,359 @@ Ready-to-use React component for Claude artifacts:
 
 
 @mcp.tool()
+async def get_sales_dashboard_with_production() -> str:
+    """Get enhanced sales dashboard with automatic production order linking.
+    
+    🗓️ DEFAULT FILTER: 7-day timeframe for recent sales orders with linked production.
+    
+    Returns comprehensive sales+production view:
+    - Recent sales orders (last 7 days)
+    - Matching production orders for each sales order
+    - Production status breakdown
+    - Cross-system insights
+    
+    Perfect for sales teams who need to see both sides of the business.
+    
+    💡 FOR MORE COMPREHENSIVE DATA:
+    - Use get_customer_orders(since_date="YYYY-MM-DD") + manual production lookup
+    - Use get_sales_dashboard_with_production_by_status(status="RELEASED")
+    - Use search_orders_with_wildcards("ORDER123%") for specific order families
+    """
+    try:
+        results = {
+            "dashboard_type": "Sales + Production View",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sales_orders": [],
+            "production_summary": {"total": 0, "in_progress": 0, "released": 0, "finished": 0}
+        }
+        
+        # Get recent sales orders (last 7 days)
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        sales_response = await get_customer_orders(
+            size=15, 
+            since_date=seven_days_ago.strftime("%Y-%m-%dT%H:%M:%S"), 
+            auto_paginate=False,
+            filter_quality=True
+        )
+        
+        # Extract sales order numbers from response
+        sales_order_numbers = []
+        for line in sales_response.split('\n'):
+            if 'Order #' in line:
+                # Extract order number (e.g., "Order #400139" -> "400139")
+                order_num = line.split('Order #')[1].split()[0]
+                sales_order_numbers.append(order_num)
+        
+        # For each sales order, find matching production orders
+        total_production_orders = 0
+        production_status_counts = {"in_progress": 0, "released": 0, "finished": 0}
+        
+        sales_with_production = []
+        
+        for order_num in sales_order_numbers[:10]:  # Limit to 10 for performance
+            try:
+                # Get production orders for this customer order
+                production_response = await get_production_orders_for_customer_order(order_num, size=10)
+                
+                production_orders = []
+                if "No production orders found" not in production_response:
+                    # Count production orders and their statuses
+                    for line in production_response.split('\n'):
+                        if 'Status:' in line:
+                            total_production_orders += 1
+                            if 'Status: 60' in line:  # IN_PROGRESS
+                                production_status_counts["in_progress"] += 1
+                            elif 'Status: 30' in line:  # RELEASED
+                                production_status_counts["released"] += 1
+                            elif 'Status: 90' in line:  # FINISHED
+                                production_status_counts["finished"] += 1
+                            
+                            # Extract basic production order info
+                            if 'Order:' in line:
+                                prod_order = line.split('Order:')[1].split()[0] if 'Order:' in line else "Unknown"
+                                production_orders.append(prod_order)
+                
+                sales_with_production.append({
+                    "sales_order": order_num,
+                    "production_orders": production_orders,
+                    "production_count": len(production_orders)
+                })
+                
+            except Exception as e:
+                # Skip problematic orders but continue
+                pass
+        
+        results["sales_orders"] = sales_with_production
+        results["production_summary"] = {
+            "total": total_production_orders,
+            "in_progress": production_status_counts["in_progress"],
+            "released": production_status_counts["released"], 
+            "finished": production_status_counts["finished"]
+        }
+        
+        # Format comprehensive output
+        output = f"""
+🏢 SALES + PRODUCTION DASHBOARD - {results['timestamp']}
+
+📊 RECENT SALES ACTIVITY (Last 7 Days):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Found {len(sales_with_production)} sales orders with linked production data:
+
+"""
+        
+        for item in sales_with_production[:8]:  # Show top 8
+            prod_list = ", ".join(item["production_orders"]) if item["production_orders"] else "No production orders"
+            output += f"""📋 Sales Order: {item['sales_order']}
+   🏭 Production: {item['production_count']} orders → {prod_list}
+   
+"""
+        
+        output += f"""
+🏭 PRODUCTION SUMMARY FOR RECENT SALES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Total Production Orders: {results['production_summary']['total']}
+🔄 In Progress: {results['production_summary']['in_progress']} orders
+⏳ Released: {results['production_summary']['released']} orders  
+✅ Finished: {results['production_summary']['finished']} orders
+
+🗓️ TIMEFRAME: 7-day focused view linking sales to production
+💡 FOR SPECIFIC ORDERS: Use search_orders_with_wildcards("ORDER123%")
+🔍 FOR STATUS FILTERING: Use get_customer_orders(status="RELEASED") + manual production lookup
+   For broader timeframes, use get_customer_orders(since_days=30)
+"""
+        
+        return output.strip()
+        
+    except Exception as e:
+        return f"❌ Error generating enhanced sales dashboard: {str(e)}"
+
+
+@mcp.tool()
+async def get_sales_orders_with_production_by_status(
+    status: str = "RELEASED",
+    since_days: int = 30,
+    max_results: int = 15
+) -> str:
+    """Get sales orders by status with automatic production order linking.
+    
+    🔍 Perfect for: "Show me RELEASED orders and their production status"
+    
+    Args:
+        status: Sales order status ("RELEASED", "DELIVERED", "COMPLETED", etc.)
+        since_days: Look back this many days (default: 30)
+        max_results: Maximum sales orders to process (default: 15)
+        
+    Returns:
+        Sales orders filtered by status with linked production orders and status breakdown
+    """
+    try:
+        # Get sales orders by status
+        since_date = datetime.now() - timedelta(days=since_days)
+        sales_response = await get_customer_orders(
+            size=max_results,
+            status=status,
+            since_date=since_date.strftime("%Y-%m-%dT%H:%M:%S"),
+            auto_paginate=False,
+            filter_quality=True
+        )
+        
+        # Extract sales order numbers
+        sales_order_numbers = []
+        for line in sales_response.split('\n'):
+            if 'Order #' in line:
+                order_num = line.split('Order #')[1].split()[0]
+                sales_order_numbers.append(order_num)
+        
+        if not sales_order_numbers:
+            return f"No {status} sales orders found in the last {since_days} days."
+        
+        # Link to production orders
+        linked_data = []
+        production_summary = {"total": 0, "in_progress": 0, "released": 0, "finished": 0}
+        
+        for order_num in sales_order_numbers:
+            try:
+                production_response = await get_production_orders_for_customer_order(order_num, size=10)
+                
+                production_details = []
+                if "No production orders found" not in production_response:
+                    for line in production_response.split('\n'):
+                        if 'Order:' in line and 'Status:' in line:
+                            # Extract production order and status
+                            parts = line.split()
+                            prod_order = "Unknown"
+                            status_val = "Unknown"
+                            
+                            for i, part in enumerate(parts):
+                                if part == "Order:" and i + 1 < len(parts):
+                                    prod_order = parts[i + 1]
+                                elif part == "Status:" and i + 1 < len(parts):
+                                    status_val = parts[i + 1]
+                            
+                            production_details.append(f"{prod_order} (Status: {status_val})")
+                            production_summary["total"] += 1
+                            
+                            # Count by status
+                            if status_val == "60":
+                                production_summary["in_progress"] += 1
+                            elif status_val == "30":
+                                production_summary["released"] += 1
+                            elif status_val == "90":
+                                production_summary["finished"] += 1
+                
+                linked_data.append({
+                    "sales_order": order_num,
+                    "production_orders": production_details
+                })
+                
+            except Exception as e:
+                linked_data.append({
+                    "sales_order": order_num,
+                    "production_orders": [f"Error: {str(e)}"]
+                })
+        
+        # Format output
+        output = f"""
+🔍 SALES ORDERS ({status}) WITH PRODUCTION LINKS - Last {since_days} Days
+
+📋 SALES ORDERS FOUND: {len(linked_data)}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+        
+        for item in linked_data:
+            output += f"""📋 Sales Order: {item['sales_order']} (Status: {status})
+   🏭 Production Orders:
+"""
+            if item['production_orders']:
+                for prod in item['production_orders']:
+                    output += f"      • {prod}\n"
+            else:
+                output += "      • No production orders found\n"
+            output += "\n"
+        
+        output += f"""
+🏭 PRODUCTION SUMMARY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Total Production Orders: {production_summary['total']}
+🔄 In Progress (60): {production_summary['in_progress']} orders
+⏳ Released (30): {production_summary['released']} orders
+✅ Finished (90): {production_summary['finished']} orders
+
+💡 FOR SPECIFIC ORDER: Use search_orders_with_wildcards("ORDER123%")
+🔍 FOR OTHER STATUS: Change status parameter to "DELIVERED", "COMPLETED", etc.
+"""
+        
+        return output.strip()
+        
+    except Exception as e:
+        return f"❌ Error getting {status} sales orders with production: {str(e)}"
+
+
+@mcp.tool()
+async def get_specific_sales_order_with_production(
+    order_pattern: str,
+    include_details: bool = True
+) -> str:
+    """Get specific sales order(s) with complete production order details.
+    
+    🎯 Perfect for: "Show me order 400139 and all its production orders"
+    
+    Args:
+        order_pattern: Order number or pattern (e.g., "400139", "400%", "ORDER123")
+        include_details: Include detailed production operations (default: True)
+        
+    Returns:
+        Detailed sales order info with complete production order breakdown
+    """
+    try:
+        # Search for the sales order(s)
+        sales_response = await search_orders_with_wildcards(
+            search_pattern=order_pattern if "%" in order_pattern else f"{order_pattern}%",
+            search_in="customer",
+            size=10
+        )
+        
+        # Extract sales order numbers from the response
+        sales_orders = []
+        current_order = None
+        
+        for line in sales_response.split('\n'):
+            if 'Order #' in line:
+                order_num = line.split('Order #')[1].split()[0]
+                current_order = {"number": order_num, "details": []}
+                sales_orders.append(current_order)
+            elif current_order and line.strip() and not line.startswith('=') and not line.startswith('-'):
+                current_order["details"].append(line.strip())
+        
+        if not sales_orders:
+            return f"No sales orders found matching pattern: {order_pattern}"
+        
+        # Get detailed production information for each sales order
+        output = f"""
+🎯 SPECIFIC SALES ORDER ANALYSIS: {order_pattern}
+
+📋 SALES ORDERS FOUND: {len(sales_orders)}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+        
+        for sales_order in sales_orders:
+            output += f"""📋 SALES ORDER: {sales_order['number']}
+"""
+            
+            # Show sales order details
+            for detail in sales_order['details'][:5]:  # Limit details
+                if detail:
+                    output += f"   {detail}\n"
+            
+            output += "\n🏭 LINKED PRODUCTION ORDERS:\n"
+            output += "   " + "─" * 70 + "\n"
+            
+            try:
+                if include_details:
+                    production_response = await get_production_orders_for_customer_order(
+                        sales_order['number'], 
+                        size=20
+                    )
+                else:
+                    # Use search for quick overview
+                    production_response = await get_production_orders(
+                        search_term=f"{sales_order['number']}%",
+                        size=10,
+                        auto_paginate=False,
+                        include_all_data=True
+                    )
+                
+                if "No production orders found" in production_response:
+                    output += "   ❌ No production orders found\n\n"
+                else:
+                    # Extract and format production order info
+                    prod_lines = production_response.split('\n')
+                    for line in prod_lines:
+                        if 'Order:' in line or 'Status:' in line or 'Due:' in line or 'Operations:' in line:
+                            output += f"   {line}\n"
+                        elif line.strip() and line.startswith('      ⚪'):  # Operation details
+                            output += f"   {line}\n"
+                    output += "\n"
+                    
+            except Exception as e:
+                output += f"   ❌ Error getting production orders: {str(e)}\n\n"
+        
+        output += f"""
+💡 USAGE TIPS:
+• Use wildcards: "{order_pattern[:-1]}%" to find order families
+• Set include_details=False for quick overview
+• Use search_orders_with_wildcards() for broader searches
+"""
+        
+        return output.strip()
+        
+    except Exception as e:
+        return f"❌ Error analyzing order {order_pattern}: {str(e)}"
+
+
+@mcp.tool()
 async def get_sales_dashboard() -> str:
     """Get sales status dashboard - consistent 4-step overview for management.
     
