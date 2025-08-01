@@ -11,7 +11,7 @@ A Model Context Protocol (MCP) server that connects AI assistants to TRUMPF Oseo
 ## What This Does
 
 Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
-- 🏭 **Management dashboards** - "How's production?" and "How's sales?" preset sequences
+- 🏭 **Consistent dashboards** - `get_production_dashboard()` and `get_sales_dashboard()` with identical structure every time
 - 📊 **Query customer orders** - "Show me recent orders for customer XYZ"
 - 🔧 **Check production status** - "What's in progress?", "What's released?", "What's finished?"
 - 🔍 **Search orders efficiently** - "Find everything related to ORDER123"
@@ -56,25 +56,29 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
    ```
 
 6. **Start using it** - Try asking Claude:
-   - **"How's production?"** (management dashboard)
-   - **"How's sales?"** (management dashboard)
+   - **"Get production dashboard"** (consistent management overview)
+   - **"Get sales dashboard"** (consistent management overview) 
    - "Show me the latest customer orders"
    - "Find orders containing 'steel'"
 
 ## Features
 
-- **Efficient Data Access**: Smart pagination auto-fetches up to 200 records (4 pages)
-- **Production-Ready Design**: All functions use proper API filtering instead of client-side scanning
-- **Cross-System Linking**: Connect customer orders to production orders seamlessly
-- **Wildcard Search**: Use `%` patterns for flexible searching
-- **Overdue Detection**: Fixed logic properly identifies overdue orders
-- **API-Native Filtering**: Uses real TRUMPF API status values (RELEASED=30, IN_PROGRESS=60, FINISHED=90)
-- **Bulk Operations**: Dedicated functions for 200+ records with array storage
-- **Clear Guidance**: Every function suggests next actions for pagination
-- **Secure Authentication**: Configurable credentials with TRUMPF headers
-- **Demo Mode**: Sanitized data for presentations
+- **🎯 AI Agent Reliable**: `get_production_dashboard()` and `get_sales_dashboard()` always return identical structure
+- **📊 Consistent Data**: Limited results (25 per section) prevent overload, perfect for management meetings
+- **⚡ Efficient Design**: All functions use proper API filtering instead of client-side scanning
+- **🔗 Cross-System Linking**: Connect customer orders to production orders seamlessly
+- **🔍 Smart Search**: Use `%` patterns for flexible wildcard searching
+- **⚠️ Fixed Overdue Logic**: Properly identifies overdue orders with correct date handling
+- **🏭 API-Native Status**: Uses real TRUMPF API status values (RELEASED=30, IN_PROGRESS=60, FINISHED=90)
+- **📈 Auto-Pagination**: Smart pagination auto-fetches up to 200 records (4 pages)
+- **💾 Bulk Operations**: Dedicated functions for 200+ records with array storage
+- **🔐 Secure Authentication**: Configurable credentials with TRUMPF headers
 
 ## Available Tools
+
+### 🎯 Management Dashboards (AI Agent Optimized)
+- **get_production_dashboard** - Always same structure: active work, pipeline, completions, issues (max 25 each)
+- **get_sales_dashboard** - Always same structure: new business, ready for production, delivery issues, changes (max 25 each)
 
 ### Customer Orders
 - **get_customer_orders** - Main tool: auto-fetches up to 200 records with smart pagination
@@ -107,11 +111,11 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 
 ### 💬 Ask Claude These Questions:
 
-**Management Dashboard (Best Practice Sequences):**
-- 🏭 **"How's production?"** → 4-step overview: active work, pipeline, completions, issues
-- 📊 **"How's sales?"** → 4-step overview: new orders, ready for production, delivery issues, changes
+**Management Dashboard (Consistent Single Commands):**
+- 🏭 **`get_production_dashboard()`** → Always returns same structured format: active work, pipeline, completions, issues
+- 📊 **`get_sales_dashboard()`** → Always returns same structured format: new orders, ready for production, delivery issues, changes
 
-*Perfect for daily management meetings and quick status checks*
+*Perfect for AI agents - consistent data structure every time, limited results for reliability*
 
 **Quick Status Checks:**
 - "Show me recent customer orders"

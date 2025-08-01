@@ -119,19 +119,16 @@ check_production_order_overdue(
 
 ### Best Practices
 
-1. **Use management dashboard sequences:**
+1. **Use single dashboard commands for consistency:**
    ```bash
-   # Production meeting: "How's production?"
-   get_in_progress_production_orders(since_days=7)
-   get_released_production_orders(since_days=14) 
-   get_finished_production_orders(since_days=3)
-   check_production_order_overdue(search_term="%", days_overdue=1)
+   # Production meeting - always same format
+   get_production_dashboard()
    
-   # Sales meeting: "How's sales?"
-   get_customer_orders(since_days=7)
-   get_customer_orders(status="RELEASED")
-   check_customer_order_overdue(customer_no="%", days_overdue=1)
-   get_modified_orders(days=3)
+   # Sales meeting - always same format
+   get_sales_dashboard()
+   
+   # Perfect for AI agents - predictable structure every time
+   # Limited data (25 records per section) prevents overload
    ```
 
 2. **Use auto-pagination by default:**
@@ -212,71 +209,87 @@ for order in customer_orders:
 all_related = search_orders_with_wildcards("PROJECT123%")
 ```
 
-## Management Dashboard Workflows
+## Management Dashboard Commands
 
-### "How's Production?" - Daily Production Overview
+### `get_production_dashboard()` - Consistent Production Overview
 
-**Quick at-a-glance production status for management meetings:**
-
-```bash
-# 1. Current production activity
-get_in_progress_production_orders(since_days=7)
-
-# 2. Orders ready to start
-get_released_production_orders(since_days=14)
-
-# 3. Recent completions
-get_finished_production_orders(since_days=3)
-
-# 4. Check for production delays
-check_production_order_overdue(search_term="%", days_overdue=1)
-```
-
-**What this tells you:**
-- **Active work**: Orders currently being manufactured
-- **Pipeline**: Orders released and waiting to start production
-- **Recent wins**: Completed orders (achievements)
-- **Red flags**: Any production delays requiring attention
-
-**Example output sequence:**
-```
-✅ Active Production (7 days): 12 orders in progress
-⏳ Production Pipeline (14 days): 8 orders ready to start  
-🏆 Recent Completions (3 days): 5 orders finished
-⚠️ Production Issues: 2 orders overdue by 1+ days
-```
-
-### "How's Sales?" - Daily Sales Overview
-
-**Quick at-a-glance sales status for management meetings:**
+**Single command that always returns the same structured format:**
 
 ```bash
-# 1. Recent customer activity
-get_customer_orders(since_days=7)
-
-# 2. Orders ready for production
-get_customer_orders(status="RELEASED")
-
-# 3. Check for delivery delays
-check_customer_order_overdue(customer_no="%", days_overdue=1)
-
-# 4. Recent order modifications
-get_modified_orders(days=3)
+# One command - always consistent results for AI agents
+get_production_dashboard()
 ```
 
-**What this tells you:**
-- **New business**: Recent customer orders and activity
-- **Production ready**: Orders released and handed off to manufacturing
-- **Customer issues**: Overdue deliveries requiring follow-up
-- **Order activity**: Recent changes and modifications
+**Internally executes 4 steps with limited data (25 records each):**
+- Active production work (last 7 days)
+- Production pipeline (last 14 days) 
+- Recent completions (last 3 days)
+- Production issues (1+ days overdue)
 
-**Example output sequence:**
+**Consistent output format every time:**
 ```
-💰 New Sales (7 days): 6 customer orders received
-🔄 Ready for Production: 4 orders released to manufacturing
-⚠️ Delivery Issues: 1 customer order overdue by 2 days
-📝 Recent Changes (3 days): 3 orders modified
+🏭 PRODUCTION DASHBOARD - 2024-01-15 14:30:22
+
+✅ Active Production: 12 orders
+   └── 12 orders currently in progress (last 7 days)
+
+⏳ Production Pipeline: 8 orders  
+   └── 8 orders ready to start production (last 14 days)
+
+🏆 Recent Completions: 5 orders
+   └── 5 orders completed (last 3 days)
+
+✅ Production Issues: 0 orders
+   └── No production delays
+
+📊 SUMMARY: 12 active | 8 pipeline | 5 completed | 0 issues
 ```
+
+**Key benefits:**
+- **AI Agent Reliable**: Same structure every single time
+- **Limited Data**: Max 25 records per section prevents overload
+- **Error Handling**: Graceful fallbacks if any section fails
+- **Timestamped**: Always shows when data was generated
+
+### `get_sales_dashboard()` - Consistent Sales Overview
+
+**Single command that always returns the same structured format:**
+
+```bash
+# One command - always consistent results for AI agents
+get_sales_dashboard()
+```
+
+**Internally executes 4 steps with limited data (25 records each):**
+- New business (last 7 days)
+- Orders ready for production (current RELEASED status)
+- Delivery issues (1+ days overdue)
+- Recent order changes (last 3 days)
+
+**Consistent output format every time:**
+```
+💼 SALES DASHBOARD - 2024-01-15 14:30:25
+
+💰 New Business: 6 orders
+   └── 6 customer orders received (last 7 days)
+
+🔄 Ready for Production: 4 orders
+   └── 4 orders released to manufacturing
+
+⚠️ Delivery Issues: 1 orders
+   └── 1 customer orders overdue by 1+ days
+
+📝 Recent Changes: 3 orders
+   └── 3 orders modified (last 3 days)
+
+📊 SUMMARY: 6 new | 4 ready | 1 issues | 3 changes
+```
+
+**Key benefits:**
+- **AI Agent Reliable**: Same structure every single time
+- **Limited Data**: Max 25 records per section prevents overload
+- **Error Handling**: Graceful fallbacks if any section fails
+- **Timestamped**: Always shows when data was generated
 
 ## Common Workflows
 
@@ -314,21 +327,18 @@ for order in customer_orders:
 
 ### Management Dashboard Commands
 
-**"How's Production?" (4-step sequence):**
+**Consistent Single Commands (AI Agent Reliable):**
 ```bash
-get_in_progress_production_orders(since_days=7)           # Active work
-get_released_production_orders(since_days=14)             # Pipeline
-get_finished_production_orders(since_days=3)              # Completions
-check_production_order_overdue(search_term="%", days_overdue=1)  # Issues
+get_production_dashboard()    # Always same 4-section structure, max 25 records each
+get_sales_dashboard()         # Always same 4-section structure, max 25 records each
 ```
 
-**"How's Sales?" (4-step sequence):**
-```bash
-get_customer_orders(since_days=7)                         # New orders
-get_customer_orders(status="RELEASED")                    # Ready for production
-check_customer_order_overdue(customer_no="%", days_overdue=1)    # Delivery issues
-get_modified_orders(days=3)                               # Order changes
-```
+**Benefits:**
+- **Consistent Structure**: Same format every time for AI agent reliability
+- **Limited Results**: Max 25 records per section prevents data overload
+- **Error Handling**: Graceful fallbacks if any section fails
+- **Timestamped**: Shows when data was generated
+- **Summary Line**: Quick overview numbers for each section
 
 ### Main Tools (Auto-pagination)
 - `get_customer_orders()` - Up to 200 customer order records

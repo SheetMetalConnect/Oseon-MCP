@@ -2028,6 +2028,262 @@ def format_production_order(order: Dict[str, Any], show_operations: bool = False
     
     return result
 
+@mcp.tool()
+async def get_production_dashboard() -> str:
+    """Get production status dashboard - consistent 4-step overview for management.
+    
+    Returns structured data for 'How's production?' with:
+    - Active work (orders in progress)
+    - Pipeline (orders ready to start)
+    - Recent completions
+    - Production issues
+    
+    Perfect for daily management meetings and AI agent consistency.
+    """
+    try:
+        results = {
+            "dashboard_type": "Production Status",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sections": []
+        }
+        
+        # 1. Active Production Work (limit 25 for consistency)
+        try:
+            active_response = await get_in_progress_production_orders(max_results=25, since_days=7)
+            active_count = len([line for line in active_response.split('\n') if 'Production Order:' in line])
+            results["sections"].append({
+                "name": "Active Production",
+                "status": "✅",
+                "count": active_count,
+                "description": f"{active_count} orders currently in progress (last 7 days)",
+                "timeframe": "7 days"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "Active Production",
+                "status": "❌",
+                "count": 0,
+                "description": f"Error getting active orders: {str(e)}",
+                "timeframe": "7 days"
+            })
+        
+        # 2. Production Pipeline (limit 25 for consistency)
+        try:
+            pipeline_response = await get_released_production_orders(max_results=25, since_days=14)
+            pipeline_count = len([line for line in pipeline_response.split('\n') if 'Production Order:' in line])
+            results["sections"].append({
+                "name": "Production Pipeline",
+                "status": "⏳",
+                "count": pipeline_count,
+                "description": f"{pipeline_count} orders ready to start production (last 14 days)",
+                "timeframe": "14 days"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "Production Pipeline",
+                "status": "❌",
+                "count": 0,
+                "description": f"Error getting pipeline orders: {str(e)}",
+                "timeframe": "14 days"
+            })
+        
+        # 3. Recent Completions (limit 25 for consistency)
+        try:
+            completed_response = await get_finished_production_orders(max_results=25, since_days=3)
+            completed_count = len([line for line in completed_response.split('\n') if 'Production Order:' in line])
+            results["sections"].append({
+                "name": "Recent Completions",
+                "status": "🏆",
+                "count": completed_count,
+                "description": f"{completed_count} orders completed (last 3 days)",
+                "timeframe": "3 days"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "Recent Completions",
+                "status": "❌",
+                "count": 0,
+                "description": f"Error getting completed orders: {str(e)}",
+                "timeframe": "3 days"
+            })
+        
+        # 4. Production Issues (limit 25 for consistency)
+        try:
+            overdue_response = await check_production_order_overdue(search_term="%", max_results=25, days_overdue=1)
+            overdue_count = len([line for line in overdue_response.split('\n') if 'Production Order:' in line])
+            status_icon = "⚠️" if overdue_count > 0 else "✅"
+            results["sections"].append({
+                "name": "Production Issues",
+                "status": status_icon,
+                "count": overdue_count,
+                "description": f"{overdue_count} orders overdue by 1+ days" if overdue_count > 0 else "No production delays",
+                "timeframe": "1+ days overdue"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "Production Issues",
+                "status": "❌",
+                "count": 0,
+                "description": f"Error checking overdue orders: {str(e)}",
+                "timeframe": "1+ days overdue"
+            })
+        
+        # Format consistent dashboard output
+        output = f"""
+🏭 PRODUCTION DASHBOARD - {results['timestamp']}
+
+{results['sections'][0]['status']} {results['sections'][0]['name']}: {results['sections'][0]['count']} orders
+   └── {results['sections'][0]['description']}
+
+{results['sections'][1]['status']} {results['sections'][1]['name']}: {results['sections'][1]['count']} orders  
+   └── {results['sections'][1]['description']}
+
+{results['sections'][2]['status']} {results['sections'][2]['name']}: {results['sections'][2]['count']} orders
+   └── {results['sections'][2]['description']}
+
+{results['sections'][3]['status']} {results['sections'][3]['name']}: {results['sections'][3]['count']} orders
+   └── {results['sections'][3]['description']}
+
+📊 SUMMARY: {results['sections'][0]['count']} active | {results['sections'][1]['count']} pipeline | {results['sections'][2]['count']} completed | {results['sections'][3]['count']} issues
+
+💡 Use this for daily production meetings and status updates.
+   For details on specific orders, use individual production order tools.
+"""
+        
+        return output.strip()
+        
+    except Exception as e:
+        return f"❌ Error generating production dashboard: {str(e)}"
+
+
+@mcp.tool()
+async def get_sales_dashboard() -> str:
+    """Get sales status dashboard - consistent 4-step overview for management.
+    
+    Returns structured data for 'How's sales?' with:
+    - New business (recent orders)
+    - Orders ready for production
+    - Delivery issues
+    - Recent order changes
+    
+    Perfect for daily management meetings and AI agent consistency.
+    """
+    try:
+        results = {
+            "dashboard_type": "Sales Status",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sections": []
+        }
+        
+        # 1. New Business (limit 25 for consistency)
+        try:
+            new_response = await get_customer_orders(size=25, since_days=7, auto_paginate=False)
+            new_count = len([line for line in new_response.split('\n') if 'Order Number:' in line])
+            results["sections"].append({
+                "name": "New Business",
+                "status": "💰",
+                "count": new_count,
+                "description": f"{new_count} customer orders received (last 7 days)",
+                "timeframe": "7 days"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "New Business", 
+                "status": "❌",
+                "count": 0,
+                "description": f"Error getting new orders: {str(e)}",
+                "timeframe": "7 days"
+            })
+        
+        # 2. Ready for Production (limit 25 for consistency)
+        try:
+            released_response = await get_customer_orders(size=25, status="RELEASED", auto_paginate=False)
+            released_count = len([line for line in released_response.split('\n') if 'Order Number:' in line])
+            results["sections"].append({
+                "name": "Ready for Production",
+                "status": "🔄",
+                "count": released_count,
+                "description": f"{released_count} orders released to manufacturing",
+                "timeframe": "current"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "Ready for Production",
+                "status": "❌", 
+                "count": 0,
+                "description": f"Error getting released orders: {str(e)}",
+                "timeframe": "current"
+            })
+        
+        # 3. Delivery Issues (limit 25 for consistency)
+        try:
+            overdue_response = await check_customer_order_overdue(customer_no="%", max_results=25, days_overdue=1)
+            overdue_count = len([line for line in overdue_response.split('\n') if 'Order Number:' in line])
+            status_icon = "⚠️" if overdue_count > 0 else "✅"
+            results["sections"].append({
+                "name": "Delivery Issues",
+                "status": status_icon,
+                "count": overdue_count,
+                "description": f"{overdue_count} customer orders overdue by 1+ days" if overdue_count > 0 else "No delivery delays",
+                "timeframe": "1+ days overdue"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "Delivery Issues",
+                "status": "❌",
+                "count": 0,
+                "description": f"Error checking overdue orders: {str(e)}",
+                "timeframe": "1+ days overdue"
+            })
+        
+        # 4. Recent Changes (limit 25 for consistency)
+        try:
+            modified_response = await get_modified_orders(days=3, max_results=25)
+            modified_count = len([line for line in modified_response.split('\n') if 'Order Number:' in line])
+            results["sections"].append({
+                "name": "Recent Changes",
+                "status": "📝",
+                "count": modified_count,
+                "description": f"{modified_count} orders modified (last 3 days)",
+                "timeframe": "3 days"
+            })
+        except Exception as e:
+            results["sections"].append({
+                "name": "Recent Changes",
+                "status": "❌",
+                "count": 0,
+                "description": f"Error getting modified orders: {str(e)}",
+                "timeframe": "3 days"
+            })
+        
+        # Format consistent dashboard output
+        output = f"""
+💼 SALES DASHBOARD - {results['timestamp']}
+
+{results['sections'][0]['status']} {results['sections'][0]['name']}: {results['sections'][0]['count']} orders
+   └── {results['sections'][0]['description']}
+
+{results['sections'][1]['status']} {results['sections'][1]['name']}: {results['sections'][1]['count']} orders
+   └── {results['sections'][1]['description']}
+
+{results['sections'][2]['status']} {results['sections'][2]['name']}: {results['sections'][2]['count']} orders
+   └── {results['sections'][2]['description']}
+
+{results['sections'][3]['status']} {results['sections'][3]['name']}: {results['sections'][3]['count']} orders
+   └── {results['sections'][3]['description']}
+
+📊 SUMMARY: {results['sections'][0]['count']} new | {results['sections'][1]['count']} ready | {results['sections'][2]['count']} issues | {results['sections'][3]['count']} changes
+
+💡 Use this for daily sales meetings and status updates.
+   For details on specific orders, use individual customer order tools.
+"""
+        
+        return output.strip()
+        
+    except Exception as e:
+        return f"❌ Error generating sales dashboard: {str(e)}"
+
+
 def main():
     """Main entry point for the MCP server.
     
