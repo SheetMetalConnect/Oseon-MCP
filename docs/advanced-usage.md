@@ -1,6 +1,6 @@
 # Advanced Usage Guide
 
-This guide covers advanced features for power users working with large datasets, complex filtering, and bulk operations.
+Practical guide for working with large datasets, bulk operations, and performance optimization.
 
 ## Bulk Data Retrieval
 
@@ -10,30 +10,35 @@ This guide covers advanced features for power users working with large datasets,
 graph LR
     A["🎯 Data Need"] --> B{"Amount Required"}
     
-    B -->|"25-50 records"| C["📄 Single Page<br/>get_production_orders(size=50, page=10)"]
-    B -->|"150+ records"| D["📚 Bulk Pages<br/>get_production_orders_bulk(start_page=10, num_pages=3)"]
-    B -->|"Latest records"| E["⚡ Auto-Latest<br/>get_production_orders(get_latest=true)"]
+    B -->|"Up to 200 records"| C["📄 Auto-pagination<br/>get_customer_orders()"]
+    B -->|"200+ records"| D["📚 Bulk Operations<br/>get_customer_orders_bulk()"]
+    B -->|"Specific status"| E["⚡ Status-specific<br/>get_released_production_orders()"]
     
-    C --> F["✅ 50 records from page 10"]
-    D --> G["✅ 150 records from pages 10-12"]
-    E --> H["✅ Latest 25 records from end of dataset"]
+    C --> F["✅ Up to 200 records (4 pages)"]
+    D --> G["✅ Custom page ranges"]
+    E --> H["✅ API-native filtering"]
 ```
 
 ### Bulk Operations Examples
 
-**Get multiple consecutive pages:**
+**Auto-pagination (recommended):**
 ```bash
-# Get 3 pages of production orders (150 records total)
-get_production_orders_bulk(size=50, start_page=10, num_pages=3)
-
-# Get 5 pages of customer orders with filtering
-get_customer_orders_bulk(size=50, start_page=1, num_pages=5, status="RELEASED")
+# Gets up to 200 records automatically (4 pages)
+get_customer_orders(status="RELEASED")
+get_production_orders(search_term="ORDER123%")
 ```
 
-**Performance considerations:**
-- Maximum 10 pages per bulk request (500 records)
-- Use appropriate page sizes (25-50 records per page)
-- Apply filters to reduce dataset size when possible
+**Bulk operations (200+ records):**
+```bash
+# Get specific page ranges for large datasets
+get_production_orders_bulk(size=50, start_page=10, num_pages=3)
+get_customer_orders_bulk(size=50, start_page=1, num_pages=5)
+```
+
+**Performance notes:**
+- All functions use 50 records per page (API maximum)
+- Auto-pagination fetches up to 200 records by default
+- Use bulk operations only for datasets larger than 200 records
 
 ## Advanced Search Patterns
 
@@ -44,59 +49,69 @@ get_customer_orders_bulk(size=50, start_page=1, num_pages=5, status="RELEASED")
 | `ORDER123%` | Starts with ORDER123 | ORDER123-001, ORDER123-ABC |
 | `%bracket%` | Contains "bracket" | steel-bracket-001, bracket-assembly |
 | `%2024` | Ends with 2024 | ORDER-2024, PROD-2024 |
-| `ORDER_____` | Exact length with wildcards | ORDER12345 (ORDER + 5 chars) |
 
-### Cross-System Search Examples
+**Usage:**
+```bash
+search_orders_with_wildcards("ORDER123%")
+get_production_orders(search_term="%urgent%")
+```
+
+### Efficient Search Examples
 
 ```bash
-# Find everything related to a customer order across both systems
+# Cross-system search
 search_orders_with_wildcards("ORDER123%")
 
-# Search for specific part numbers in both customer and production orders
-search_orders_with_wildcards("%PART456%")
+# Status-specific searches (API efficient)
+get_released_production_orders(search_term="ORDER123%")
+get_in_progress_production_orders(since_days=7)
 
-# Find orders from specific time periods
-get_recent_orders(days=30)  # Last 30 days
+# Customer-specific overdue checks
+check_customer_order_overdue(customer_no="C123")
 ```
 
 ## Complex Filtering Combinations
 
-### Customer Orders Advanced Filtering
+### Customer Orders Filtering
 
 ```bash
-# Multiple status filter
-get_orders_with_advanced_filter(
-    status=["RELEASED", "PROCESSING"],
-    customer_name="ACME%",
-    date_from="2024-01-01"
+# Auto-pagination with filtering
+get_customer_orders(
+    status="RELEASED",
+    customer_no="C123",
+    search_term="steel"
 )
 
-# Item-based filtering
+# Item-based search
 get_orders_by_item(
-    item_description="%steel%",
-    status="COMPLETED"
+    item_no="PART123",
+    status_category="completed"
 )
 
-# Time-based with customer filtering
+# Customer-specific queries
 get_latest_orders_for_customer(
-    customer_number="C123",
-    limit=50
+    customer_no="C123",
+    max_results=50
 )
 ```
 
-### Production Orders Advanced Filtering
+### Production Orders Filtering
 
 ```bash
-# Status and search term combination
+# Auto-pagination with filtering
 get_production_orders(
     search_term="ORDER123%",
-    status=60,  # Active production
-    size=50
+    status=60  # IN_PROGRESS
 )
 
-# Overdue orders with specific criteria
-get_overdue_production_orders(
-    search_term="%urgent%"
+# Status-specific queries (API efficient)
+get_in_progress_production_orders(search_term="ORDER123%")
+get_released_production_orders(since_days=30)
+
+# Overdue checks with constraints
+check_production_order_overdue(
+    search_term="ORDER123%",
+    days_overdue=7
 )
 ```
 
@@ -104,41 +119,40 @@ get_overdue_production_orders(
 
 ### Best Practices
 
-1. **Use appropriate page sizes:**
-   - Small queries: 25 records per page
-   - Bulk operations: 50 records per page
-   - Never exceed 50 records per page
-
-2. **Apply filters early:**
+1. **Use auto-pagination by default:**
    ```bash
-   # Good: Filter at API level
-   get_customer_orders(status="RELEASED", customer_name="ACME%")
+   # Good: Gets up to 200 records automatically
+   get_customer_orders(status="RELEASED")
    
-   # Avoid: Getting all data then filtering in Claude
-   get_customer_orders() # Then asking Claude to filter
+   # Only use bulk for 200+ records
+   get_customer_orders_bulk(num_pages=10)  # When you need more
    ```
 
-3. **Use bulk operations for large datasets:**
+2. **Apply proper constraints:**
    ```bash
-   # Efficient: Single bulk request
-   get_production_orders_bulk(start_page=1, num_pages=5)
+   # Good: Use API filters
+   get_released_production_orders(search_term="ORDER123%")
    
-   # Inefficient: Multiple single-page requests
-   # get_production_orders(page=1), get_production_orders(page=2), etc.
+   # Good: Use customer constraints for overdue checks
+   check_customer_order_overdue(customer_no="C123")
    ```
 
-### Understanding Auto-Latest Feature
+3. **Follow pagination hints:**
+   - Functions suggest next actions
+   - Use bulk operations for large datasets
+   - Follow suggested page ranges
 
-The auto-latest feature automatically calculates the last page and starts from there:
+### Understanding Auto-Pagination
+
+Auto-pagination fetches up to 200 records (4 pages) intelligently:
 
 ```bash
-# These queries start from the newest data
-get_customer_orders(get_latest=true)
-get_production_orders(get_latest=true)
+# Default behavior - gets up to 200 records
+get_customer_orders()  # Fetches 4 pages automatically
+get_production_orders()  # Stops early if less data available
 
-# Equivalent to manually calculating:
-# total_pages = get_total_pages()
-# get_customer_orders(page=total_pages)
+# Single page only
+get_customer_orders(auto_paginate=false)
 ```
 
 ## Data Export Strategies
@@ -147,51 +161,56 @@ get_production_orders(get_latest=true)
 
 For analytical work requiring large datasets:
 
-1. **Plan your approach:**
+1. **Start with auto-pagination:**
    ```bash
-   # Step 1: Get overview
-   get_production_status_overview()
-   
-   # Step 2: Determine page range
-   get_production_orders(size=1)  # Check total pages
-   
-   # Step 3: Bulk retrieve
-   get_production_orders_bulk(start_page=1, num_pages=10)  # 500 records
+   # Gets up to 200 records automatically
+   get_customer_orders(status="RELEASED")
+   get_production_orders(search_term="ORDER%")
    ```
 
-2. **Handle large results systematically:**
-   - Process data in chunks
-   - Use consistent filtering across requests
-   - Save intermediate results for complex analysis
+2. **Use bulk operations for 200+ records:**
+   ```bash
+   # Explicit bulk operations for large datasets
+   get_production_orders_bulk(start_page=1, num_pages=10)
+   get_customer_orders_bulk(start_page=5, num_pages=8)
+   ```
+
+3. **Use status-specific functions:**
+   ```bash
+   # API-efficient filtering
+   get_released_production_orders(since_days=30)
+   get_in_progress_production_orders()
+   get_finished_production_orders(since_days=7)
+   ```
 
 ### Combining Customer and Production Data
 
 ```bash
-# 1. Get customer orders
-customer_orders = get_customer_orders_bulk(num_pages=3)
+# 1. Start with auto-pagination
+customer_orders = get_customer_orders(status="RELEASED")
 
-# 2. For each customer order, get production orders
+# 2. Link to production orders
 for order in customer_orders:
     production_orders = get_production_orders_for_customer_order(order.number)
     
-# 3. Or search both systems simultaneously
+# 3. Cross-system search
 all_related = search_orders_with_wildcards("PROJECT123%")
 ```
 
-## Advanced Tool Combinations
+## Common Workflows
 
-### Production Analysis Workflow
+### Production Status Workflow
 
 ```bash
-# 1. Overview
-production_status = get_production_status_overview()
+# 1. Check current status
+in_progress = get_in_progress_production_orders()
+released = get_released_production_orders()
 
-# 2. Identify issues
-overdue_orders = get_overdue_production_orders()
-active_orders = get_active_production_orders()
+# 2. Check for issues
+overdue = check_production_order_overdue(search_term="ORDER123%")
 
-# 3. Deep dive on specific orders
-for order in overdue_orders:
+# 3. Link to customer context
+for order in overdue:
     customer_order = get_customer_order_for_production_order(order.number)
     details = get_customer_order_details(customer_order.number)
 ```
@@ -199,47 +218,49 @@ for order in overdue_orders:
 ### Customer Service Workflow
 
 ```bash
-# 1. Find customer orders
-customer_orders = get_orders_by_customer("CUSTOMER123")
+# 1. Get customer's recent orders
+customer_orders = get_latest_orders_for_customer(customer_no="C123")
 
-# 2. Check production status for each
+# 2. Check for overdue items
+overdue = check_customer_order_overdue(customer_no="C123")
+
+# 3. Link to production status
 for order in customer_orders:
     production_orders = get_production_orders_for_customer_order(order.number)
-    
-# 3. Identify any issues
-overdue = get_overdue_orders(customer_number="CUSTOMER123")
 ```
 
-## Command Reference
+## Quick Reference
 
-### Bulk Operations
-- `get_customer_orders_bulk(size, start_page, num_pages, ...filters)`
-- `get_production_orders_bulk(size, start_page, num_pages, ...filters)`
+### Main Tools (Auto-pagination)
+- `get_customer_orders()` - Up to 200 customer order records
+- `get_production_orders()` - Up to 200 production order records
 
-### Cross-System Tools
-- `search_orders_with_wildcards(search_pattern)`
-- `get_production_orders_for_customer_order(customer_order_no)`
-- `get_customer_order_for_production_order(production_order_no)`
+### Status-Specific Tools
+- `get_released_production_orders()` - RELEASED status orders
+- `get_in_progress_production_orders()` - IN_PROGRESS status orders
+- `get_finished_production_orders()` - FINISHED status orders
 
-### Advanced Filtering
-- `get_orders_with_advanced_filter(...multiple_criteria)`
-- `get_recent_orders(days)`
-- `get_overdue_orders()`
-- `get_overdue_production_orders()`
+### Constraint-Based Tools
+- `check_customer_order_overdue(customer_no)` - Efficient overdue checks
+- `check_production_order_overdue(search_term)` - Targeted overdue checks
 
-## Troubleshooting Advanced Operations
+### Bulk Operations (200+ records)
+- `get_customer_orders_bulk()` - Large customer datasets
+- `get_production_orders_bulk()` - Large production datasets
+
+## Troubleshooting
 
 ### Performance Issues
-- Reduce page size if timeouts occur
-- Apply more specific filters to reduce dataset size
-- Use status filters to limit scope
+- Use auto-pagination (gets up to 200 records efficiently)
+- Apply specific filters (customer_no, search_term, status)
+- Use status-specific functions for better API efficiency
 
-### Memory Considerations
-- Large bulk operations may consume significant memory
-- Process results in chunks for very large datasets
-- Consider breaking complex operations into smaller steps
+### Large Datasets
+- Use bulk operations only for 200+ records
+- Follow pagination hints for next actions
+- Use proper constraints in overdue check functions
 
-### Rate Limiting
-- The server implements reasonable rate limiting
-- Bulk operations are optimized to minimize API calls
-- Allow brief pauses between very large requests if needed
+### Best Results
+- Start with auto-pagination functions
+- Use API-native status filtering
+- Follow function guidance for next steps

@@ -1,36 +1,34 @@
-# Complete Tools Reference & Agentic Workflows
+# Tools Reference & Usage Patterns
 
-This comprehensive guide covers all 23 tools, their optimal usage patterns, and how to orchestrate them in intelligent agentic workflows.
+Practical guide to all MCP tools and their optimal usage patterns for interacting with TRUMPF Oseon data.
 
-## 📊 Customer Orders Tools (13 tools)
+## 📊 Customer Orders Tools
 
 ### Core Retrieval Tools
 
 #### `get_customer_orders`
-**Purpose:** Primary tool for retrieving customer orders with pagination and filtering
-**Best for:** General order browsing, status checks, filtered queries
+**Purpose:** Main tool for customer orders - auto-fetches up to 200 records (4 pages)
+**Best for:** Most queries - smart pagination handles large datasets efficiently
 
 ```python
-# Basic usage
-get_customer_orders(size=25, page=1)
-
-# Auto-latest (most recent data first)
-get_customer_orders(get_latest=true, size=50)
+# Default: Gets up to 200 records automatically
+get_customer_orders()
 
 # With filtering
 get_customer_orders(
-    size=25, 
-    page=1, 
     status="RELEASED", 
     customer_no="C123",
     search_term="steel"
 )
+
+# Single page only
+get_customer_orders(auto_paginate=false)
 ```
 
-**Agentic Usage:**
-- **Discovery phase:** Start workflows with this tool to understand data scope
-- **Status monitoring:** Regular checks for new orders or status changes
-- **Data validation:** Verify order existence before detailed operations
+**Usage Notes:**
+- **Start here:** Best for most customer order queries
+- **Auto-pagination:** Fetches 4 pages (200 records) by default
+- **Smart guidance:** Suggests next actions for more data
 
 #### `get_customer_order_details`
 **Purpose:** Retrieve complete order information including positions, pricing, operations
@@ -46,8 +44,8 @@ get_customer_order_details(customer_order_no="ORDER123")
 - **Data enrichment:** Get complete context for analysis workflows
 
 #### `get_customer_orders_bulk`
-**Purpose:** Efficiently retrieve large datasets across multiple pages
-**Best for:** Data analysis, reporting, bulk processing
+**Purpose:** For 200+ records with structured array storage
+**Best for:** Large dataset analysis, agent data collection
 
 ```python
 # Get 250 orders (5 pages of 50 each)
@@ -59,10 +57,10 @@ get_customer_orders_bulk(
 )
 ```
 
-**Agentic Usage:**
-- **Data collection phase:** Gather large datasets for analysis
-- **Background processing:** Collect data while performing other operations
-- **Report generation:** Build comprehensive datasets for reporting
+**Usage Notes:**
+- **Large datasets:** Use for 200+ records when agent needs array storage
+- **Explicit operation:** Requires specific page ranges
+- **Performance:** Optimized for bulk data operations
 
 ### Navigation & Browsing Tools
 
@@ -84,12 +82,15 @@ browse_customer_orders_paginated(max_pages=5, size=25)
 get_latest_orders_for_customer(customer_no="C123", limit=10)
 ```
 
-#### `get_overdue_orders`
-**Purpose:** Find customer orders past delivery due date
-**Best for:** Exception handling, urgent action items
+#### `check_customer_order_overdue`
+**Purpose:** Find overdue orders for a specific customer (efficient)
+**Best for:** Customer-specific overdue checks
 
 ```python
-get_overdue_orders(days_overdue=7, size=50)
+check_customer_order_overdue(
+    customer_no="C123", 
+    days_overdue=7
+)
 ```
 
 ### Advanced Filtering Tools
@@ -167,35 +168,35 @@ search_orders_advanced(search_term="PROJECT", max_results=50)
 get_orders_by_item(item_description="steel bracket", max_results=25)
 ```
 
-## 🔧 Production Orders Tools (5 tools)
+## 🔧 Production Orders Tools
 
 ### Core Production Tools
 
 #### `get_production_orders`
-**Purpose:** Primary production order retrieval with filtering
-**Best for:** Production monitoring, status checks
+**Purpose:** Main tool for production orders - auto-fetches up to 200 records (4 pages)
+**Best for:** Most production queries with smart pagination
 
 ```python
+# Default: Gets up to 200 records automatically
+get_production_orders()
+
+# With filtering
 get_production_orders(
-    size=25, 
     search_term="ORDER123%", 
-    status=60,  # Active production
-    get_latest=true
+    status=60  # Active production
 )
 ```
 
-#### `get_production_status_overview`
-**Purpose:** High-level production summary and statistics
-**Best for:** "How's production?" queries, dashboard data
+#### `get_released_production_orders`
+**Purpose:** Production orders with RELEASED status (API native)
+**Best for:** Orders released for production but not yet started
 
 ```python
-get_production_status_overview()
+get_released_production_orders(
+    since_days=30,
+    search_term="ORDER123%"
+)
 ```
-
-**Agentic Usage:**
-- **Workflow starter:** Begin production analysis with overview
-- **Health checks:** Regular production system monitoring
-- **Context setting:** Understand current state before detailed queries
 
 #### `get_production_orders_bulk`
 **Purpose:** Bulk retrieval of production orders
@@ -207,20 +208,26 @@ get_production_orders_bulk(size=50, start_page=10, num_pages=5)
 
 ### Specialized Production Queries
 
-#### `get_overdue_production_orders`
-**Purpose:** Find production orders past due date
-**Best for:** Urgent action identification, exception handling
+#### `check_production_order_overdue`
+**Purpose:** Find overdue production orders matching search term (efficient)
+**Best for:** Targeted overdue checks with search constraints
 
 ```python
-get_overdue_production_orders(search_term="%urgent%")
+check_production_order_overdue(
+    search_term="ORDER123%", 
+    days_overdue=7
+)
 ```
 
-#### `get_active_production_orders`
-**Purpose:** Currently active production orders
-**Best for:** Real-time production monitoring
+#### `get_in_progress_production_orders`
+**Purpose:** Production orders with IN_PROGRESS status (API native)
+**Best for:** Orders currently being manufactured
 
 ```python
-get_active_production_orders(size=50)
+get_in_progress_production_orders(
+    since_days=30,
+    search_term="PROJECT%"
+)
 ```
 
 #### `search_production_orders`
@@ -229,6 +236,17 @@ get_active_production_orders(size=50)
 
 ```python
 search_production_orders(search_term="ORDER123%")
+```
+
+#### `get_finished_production_orders`
+**Purpose:** Production orders with FINISHED status (API native)
+**Best for:** Recently completed manufacturing orders
+
+```python
+get_finished_production_orders(
+    since_days=7,
+    search_term="ORDER%"
+)
 ```
 
 ### Cross-System Integration Tools
@@ -245,9 +263,9 @@ get_customer_order_for_production_order(production_order_no="ORDER123-001")
 **Purpose:** Continue pagination for production orders
 **Best for:** Sequential processing workflows
 
-## 🤖 Agentic Workflow Patterns
+## 🔄 Common Usage Patterns
 
-### Pattern 1: Customer Service Investigation
+### Pattern 1: Customer Inquiry
 
 ```mermaid
 flowchart TD
@@ -269,7 +287,7 @@ flowchart TD
 4. `get_overdue_production_orders()` - Check for delays
 5. Analyze and provide comprehensive status
 
-### Pattern 2: Production Health Assessment
+### Pattern 2: Production Status Check
 
 ```mermaid
 flowchart TD
@@ -291,7 +309,7 @@ flowchart TD
 4. `get_customer_order_for_production_order()` - Customer impact analysis
 5. Synthesize findings with recommendations
 
-### Pattern 3: Large Dataset Analysis
+### Pattern 3: Data Analysis
 
 ```mermaid
 flowchart TD
@@ -313,7 +331,7 @@ flowchart TD
 4. Cross-reference and analyze patterns
 5. Generate insights and reports
 
-### Pattern 4: Customer Account Review
+### Pattern 4: Customer Review
 
 ```mermaid
 flowchart TD
@@ -335,7 +353,7 @@ flowchart TD
 4. `get_overdue_orders()` - Risk assessment
 5. Compile comprehensive account review
 
-### Pattern 5: Exception Management
+### Pattern 5: Overdue Management
 
 ```mermaid
 flowchart TD
@@ -357,7 +375,7 @@ flowchart TD
 4. `get_production_orders_for_customer_order()` - Root cause analysis
 5. Create prioritized action plan
 
-## 🔄 Multi-Tool Orchestration Best Practices
+## 💡 Best Practices
 
 ### 1. Start Broad, Then Narrow
 ```python
@@ -413,7 +431,7 @@ search_customer_orders("ORDER123")
 get_customer_order_details("ORDER123")  # May fail if not found
 ```
 
-## 📈 Performance Optimization in Agentic Workflows
+## ⚡ Performance Tips
 
 ### Parallel Tool Execution
 When tools don't depend on each other, execute in parallel:
@@ -448,7 +466,7 @@ page_2 = get_customer_orders(page=2, size=50)
 # Continue based on findings
 ```
 
-## 🎯 Tool Selection Decision Tree
+## 🎯 Tool Selection Guide
 
 ```mermaid
 flowchart TD
@@ -472,4 +490,4 @@ flowchart TD
     style J fill:#e8f5e8
 ```
 
-This comprehensive reference should help you build sophisticated agentic workflows that leverage multiple tools effectively!
+This reference helps you choose the right tools and build effective workflows for your Oseon data needs.

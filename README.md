@@ -4,16 +4,17 @@ A Model Context Protocol (MCP) server that connects AI assistants to TRUMPF Oseo
 
 ![CleanShot 2025-08-01 at 10 05 16](https://github.com/user-attachments/assets/0ac0afa8-58ac-4eef-bf62-4834ac7060d5)
 
+**Educational demonstration only.** TRUMPF Oseon is a trademark of TRUMPF Co. KG. No official affiliation.
 
-**⚠️ Disclaimer:** Educational demonstration only. TRUMPF Oseon is a trademark of TRUMPF Co. KG. No official affiliation.
+**Purpose:** Demonstrate how to connect AI assistants to manufacturing systems for intelligent order management and production insights.
 
 ## What This Does
 
 Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 - 📊 **Query customer orders** - "Show me recent orders for customer XYZ"
 - 🔧 **Check production status** - "How's production going?"
-- 🔍 **Search across systems** - "Find everything related to ORDER123"
-- 📈 **Analyze large datasets** - "Get 200 production orders for analysis"
+- 🔍 **Search orders efficiently** - "Find everything related to ORDER123"
+- 📈 **Get data intelligently** - Auto-fetches up to 200 records with smart pagination
 - 🔗 **Link related data** - "Which production orders belong to customer order ORDER123?"
 
 ## Quick Start
@@ -60,94 +61,88 @@ Connect AI assistants (like Claude) directly to your TRUMPF Oseon system to:
 
 ## Features
 
-- **Comprehensive Order Management**: Customer orders + production orders
-- **Smart Pagination**: Auto-latest page for recent data, not oldest first
-- **Cross-System Linking**: Connect customer orders to production orders and vice versa
-- **Wildcard Search**: Use `%` patterns for flexible searching across both systems
-- **Advanced Filtering**: Multiple filter combinations (status, dates, customer, items)
-- **Production Insights**: "How's production?" status overviews and active/overdue tracking
-- **Detailed Information**: Full order details with positions, pricing, and operations
+- **Efficient Data Access**: Smart pagination auto-fetches up to 200 records (4 pages)
+- **Production-Ready Design**: All functions use proper API filtering instead of client-side scanning
+- **Cross-System Linking**: Connect customer orders to production orders seamlessly
+- **Wildcard Search**: Use `%` patterns for flexible searching
+- **Overdue Detection**: Fixed logic properly identifies overdue orders
+- **API-Native Filtering**: Uses real TRUMPF API status values (RELEASED=30, IN_PROGRESS=60, FINISHED=90)
+- **Bulk Operations**: Dedicated functions for 200+ records with array storage
+- **Clear Guidance**: Every function suggests next actions for pagination
 - **Secure Authentication**: Configurable credentials with TRUMPF headers
-- **Demo Mode**: Sanitized data for presentations and videos
-- **Bulk Data Retrieval**: Get hundreds of records efficiently across multiple pages
-- **Performance Optimized**: Smart pagination and error handling for production use
+- **Demo Mode**: Sanitized data for presentations
 
-## Available Tools (23 tools)
+## Available Tools
 
-### Customer Orders (13 tools)
-1. **get_customer_orders** - Get paginated customer orders with filtering (auto-latest page)
-2. **get_customer_order_details** - Get detailed information about a specific order
-3. **browse_customer_orders_paginated** - Browse through multiple pages with confirmation
-4. **get_latest_orders_for_customer** - Get most recent orders for a specific customer
-5. **get_overdue_orders** - Find customer orders past their delivery due date
-6. **get_orders_with_advanced_filter** - Advanced filtering for customer orders
-7. **get_newest_orders** - Get newest orders from the last N days
-8. **get_released_orders** - Get released orders from specified timeframe
-9. **get_completed_orders** - Get completed orders from specified timeframe
-10. **search_orders_advanced** - Advanced search with multiple criteria
-11. **get_modified_orders** - Get recently modified orders
-12. **get_recent_orders** - Get orders from the last N days
-13. **get_orders_by_item** - Find orders containing specific items
+### Customer Orders
+- **get_customer_orders** - Main tool: auto-fetches up to 200 records with smart pagination
+- **get_customer_order_details** - Detailed information about a specific order
+- **browse_customer_orders_paginated** - Interactive browsing with confirmation
+- **get_latest_orders_for_customer** - Recent orders for a specific customer
+- **check_customer_order_overdue** - Find overdue orders for a specific customer (efficient)
+- **get_orders_with_advanced_filter** - Complex multi-criteria filtering
+- **search_orders_advanced** - Advanced search with multiple options
+- **get_modified_orders** - Recently modified orders
+- **get_recent_orders** - Orders from last N days
+- **get_orders_by_item** - Find orders containing specific items
+- **get_customer_orders_bulk** - Bulk retrieval for 200+ records with array storage
 
-### Production Orders (5 tools)
-14. **get_production_orders** - Get production orders with filtering (auto-latest page)
-15. **get_production_status_overview** - Production status summary (perfect for "How's production?")
-16. **get_overdue_production_orders** - Find production orders past due date
-17. **get_active_production_orders** - Get currently active production orders
-18. **search_production_orders** - Search by OrderNo, OrderNoExt, or Description
+### Production Orders
+- **get_production_orders** - Main tool: auto-fetches up to 200 records with smart pagination
+- **get_released_production_orders** - Orders with RELEASED status (API native)
+- **get_in_progress_production_orders** - Orders with IN_PROGRESS status (API native)
+- **get_finished_production_orders** - Orders with FINISHED status (API native)
+- **check_production_order_overdue** - Find overdue orders matching search term (efficient)
+- **search_production_orders** - Search by OrderNo, OrderNoExt, or Description
+- **get_production_orders_bulk** - Bulk retrieval for 200+ records with array storage
 
-### Cross-System Integration (3 tools)
-19. **get_production_orders_for_customer_order** - Find production orders linked to customer order
-20. **get_customer_order_for_production_order** - Find customer order from production order
-21. **search_orders_with_wildcards** - Wildcard search across both systems
-
-### Bulk Data Retrieval (2 tools)
-22. **get_production_orders_bulk** - Get multiple pages of production orders (e.g., pages 234-236)
-23. **get_customer_orders_bulk** - Get multiple pages of customer orders
+### Cross-System Integration
+- **get_production_orders_for_customer_order** - Link customer orders to production orders
+- **get_customer_order_for_production_order** - Link production orders back to customer orders
+- **search_orders_with_wildcards** - Wildcard search across both systems
 
 ## Example Queries
 
 ### 💬 Ask Claude These Questions:
 
 **Quick Status Checks:**
-- "How's production going?"
-- "What orders are overdue?"
-- "Show me today's customer orders"
+- "Show me recent customer orders"
+- "What production orders are in progress?"
+- "Check for overdue orders for customer C123"
 
 **Searching & Filtering:**
 - "Find all orders for customer ACME Corp"
-- "Show me completed orders from last week"
+- "Show me released production orders"
 - "Search for orders containing 'bracket'"
 
 **Data Analysis:**
-- "Get 200 production orders for analysis"
-- "Show me pages 10-15 of customer orders"
-- "Export overdue production orders"
+- "Get customer orders for analysis" (auto-fetches 200 records)
+- "Get production orders from pages 10-15"
+- "Find overdue orders matching '238259'"
 
 **Cross-System Insights:**
 - "Which production orders belong to customer order ORDER123?"
 - "Find everything related to ORDER456"
 - "Link customer order CO789 to its production orders"
 
-## Available Tools Overview
+## Key Features
 
-### Customer Orders (13 tools)
-- Basic retrieval and pagination
-- Search by order number, customer, or items
-- Filter by status, dates, and advanced criteria
-- Bulk data export for analysis
+### Smart Data Access
+- **Auto-pagination**: Fetches up to 200 records (4 pages) by default
+- **API-efficient**: Uses proper TRUMPF API filters instead of client-side scanning
+- **Guidance**: Every function suggests next actions for more data
 
-### Production Orders (5 tools)
-- Production status overview
-- Search and filter active/overdue orders
-- Bulk retrieval for large datasets
+### Production Status Tools
+- **Status-specific**: Separate tools for RELEASED, IN_PROGRESS, and FINISHED orders
+- **Overdue detection**: Fixed logic with proper date format support
+- **Bulk operations**: Dedicated functions for large datasets
 
-### Cross-System Integration (3 tools)
-- Link customer orders to production orders
-- Wildcard search across both systems
-- Advanced pagination controls
+### Cross-System Integration
+- **Order linking**: Connect customer orders to production orders seamlessly
+- **Wildcard search**: Search across both systems with % patterns
+- **Efficient filtering**: All functions require proper constraints for performance
 
-*→ [See complete tools reference](docs/tools-reference.md) for all 23 tools with agentic workflow patterns*
+*→ [See complete tools reference](docs/tools-reference.md) for detailed usage patterns*
 
 ## Configuration
 
@@ -169,7 +164,7 @@ graph TB
     A["🏭 TRUMPF Oseon API v2"] --> B["📊 Customer Orders"]
     A --> C["🔧 Production Orders"]
     
-    B --> D["🔗 MCP Server<br/>(25 tools)"]
+    B --> D["🔗 MCP Server<br/>(Efficient Tools)"]
     C --> D
     
     D --> E["🤖 Claude Desktop<br/>or MCP Client"]
@@ -251,13 +246,13 @@ This project demonstrates connecting AI agents to manufacturing systems. If you'
 
 **Created by:** Luke van Enkhuizen ([Sheet Metal Connect e.U.](https://www.sheetmetalconnect.com/))  
 **Contact:** luke@sheetmetalconnect.com  
-**Development:** Built with Cursor & Claude 4 Sonnet
+**Development:** Built with Cursor & Claude Sonnet
 
-*Educational MCP demonstration for manufacturing system integration*
+*Educational MCP demonstration for manufacturing system integration - Purpose: Demonstrate how to interact with your Oseon data through AI*
 
 ## Documentation
 
-- **[Complete Tools Reference](docs/tools-reference.md)** - All 23 tools with agentic workflow patterns
+- **[Complete Tools Reference](docs/tools-reference.md)** - All tools with usage patterns
 - **[Advanced Usage Guide](docs/advanced-usage.md)** - Bulk operations, complex filtering, performance tips
 - **[Development Guide](docs/development.md)** - Contributing, extending, project structure
 - **[MCP Protocol Documentation](https://modelcontextprotocol.io/)** - Official MCP specification

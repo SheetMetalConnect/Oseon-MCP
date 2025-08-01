@@ -273,29 +273,46 @@ def is_order_overdue(due_date_str: str, status: Any) -> bool:
     """Check if a production order is overdue.
     
     Args:
-        due_date_str: Due date string in format "14.08.2017 16:00:00"
+        due_date_str: Due date string in format "14.08.2017 16:00:00" or ISO format
         status: Order status
         
     Returns:
         bool: True if order is overdue and meaningful
     """
     # Don't consider completed/canceled orders as overdue
-    if str(status) in ["95", "100", "COMPLETED", "CANCELED"]:
+    if str(status) in ["95", "100", "COMPLETED", "CANCELED", "FINISHED", "DELIVERED", "INVOICED"]:
         return False
     
     try:
-        # Parse due date (format: "14.08.2017 16:00:00")
-        due_date = datetime.strptime(due_date_str, "%d.%m.%Y %H:%M:%S")
+        # Try multiple date formats
+        due_date = None
+        
+        # Try German format first ("14.08.2017 16:00:00")
+        try:
+            due_date = datetime.strptime(due_date_str, "%d.%m.%Y %H:%M:%S")
+        except ValueError:
+            # Try ISO format as fallback
+            try:
+                due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
+                # Convert to naive datetime for consistency
+                if due_date.tzinfo is not None:
+                    due_date = due_date.replace(tzinfo=None)
+            except (ValueError, TypeError):
+                return False
+        
+        if due_date is None:
+            return False
+            
         now = datetime.now()
         
-        # Don't consider very old orders as meaningfully "overdue"
-        if due_date.year < 2020:
+        # Don't consider very old orders as meaningfully "overdue" (pre-2018)
+        if due_date.year < 2018:
             return False
             
         # Only consider overdue if it's past due date and not too ancient
         days_overdue = (now - due_date).days
-        return now > due_date and days_overdue < 365  # Max 1 year overdue to be meaningful
-    except (ValueError, AttributeError):
+        return now > due_date and days_overdue < 730  # Max 2 years overdue to be meaningful
+    except (ValueError, AttributeError, TypeError):
         return False
 
 
@@ -324,7 +341,7 @@ def get_order_status_category(status: str) -> str:
         return "NEWEST"
     
     # Released for production - in manufacturing phase
-    elif status in ["RELEASED", "SCHEDULED", "IN_PRODUCTION", "MANUFACTURING", "STARTED"]:
+    elif status in ["RELEASED", "SCHEDULED", "IN_PRODUCTION", "MANUFACTURING", "STARTED", "IN_MANUFACTURING", "ACTIVE"]:
         return "RELEASED"
     
     # Completed orders - delivered and invoiced
@@ -393,21 +410,23 @@ Order #{sanitized_order.get('customerOrderNo', 'N/A')}
 
 @mcp.tool()
 async def get_customer_orders(
-    size: int = 25, 
+    size: int = 50, 
     page: int = 1, 
     status: Optional[str] = None,
     customer_no: Optional[str] = None,
     since_date: Optional[str] = None,
     search_term: Optional[str] = None,
     item_no: Optional[str] = None,
-    get_latest: bool = True
+    get_latest: bool = True,
+    auto_paginate: bool = True
 ) -> str:
     """
     Get customer orders with comprehensive filtering options.
     Orders are sorted by modification date (newest first).
+    Automatically fetches up to 200 records (4 pages) by default.
     
     Args:
-        size: Number of orders per page (default: 25, max: 50)
+        size: Number of orders per page (default: 50, API max)
         page: Page number (1-based, default: 1)
         status: Filter by order status (e.g., 'COMPLETED', 'INVOICED', 'INCOMPLETE')
         customer_no: Filter by exact customer number
@@ -415,30 +434,53 @@ async def get_customer_orders(
         search_term: Search in order numbers and external references (supports wildcards with %)
         item_no: Filter orders containing this item number
         get_latest: If True, automatically gets recent records from end of dataset (default: True)
+        auto_paginate: If True, automatically fetches up to 200 records (default: True)
         
     Returns:
         Formatted list of customer orders with enhanced status interpretation
     """
-    # Get standard parameters with consistent sorting
-    base_params = get_standard_customer_order_params(size, page, status, customer_no, since_date, search_term, item_no)
+    # Auto-paginate up to 200 records (4 pages) if enabled
+    all_orders = []
+    max_auto_pages = 4 if auto_paginate and page == 1 else 1
+    total_records = 0
+    total_pages = 0
     
-    # If get_latest is True and page is 1 (default), get recent records
-    if get_latest and page == 1:
-        params = await get_recent_customer_orders_params(base_params)
-    else:
-        params = base_params
+    for page_num in range(page, page + max_auto_pages):
+        base_params = get_standard_customer_order_params(size, page_num, status, customer_no, since_date, search_term, item_no)
         
-    try:
-        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
-        
-        if not result.get("collection"):
-            return "No customer orders found matching the criteria."
+        # If get_latest is True and first page, get recent records
+        if get_latest and page_num == page:
+            params = await get_recent_customer_orders_params(base_params)
+        else:
+            params = base_params
             
-        # Format response
-        orders = result["collection"]
-        total_records = result.get("records", 0)
-        total_pages = result.get("pages", 0)
-        current_page = result.get("currentPage", 0) + 1  # Convert back to 1-based
+        try:
+            result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+            
+            if not result.get("collection"):
+                break  # No more data
+                
+            orders = result["collection"]
+            all_orders.extend(orders)
+            
+            # Store metadata from first successful request
+            if page_num == page:
+                total_records = result.get("records", 0)
+                total_pages = result.get("pages", 0)
+            
+            # If we got less than requested size, we've reached the end
+            if len(orders) < size:
+                break
+                
+        except Exception as e:
+            if page_num == page:  # First page error
+                return f"Error retrieving customer orders: {str(e)}"
+            break  # Subsequent page error, stop here
+    
+    if not all_orders:
+        return "No customer orders found matching the criteria."
+    
+    try:
         
         # Add filter information to header
         filter_info = []
@@ -455,19 +497,29 @@ async def get_customer_orders(
             
         filter_text = f" | Filters: {', '.join(filter_info)}" if filter_info else ""
         
-        response = f"Customer Orders (Page {current_page} of {total_pages}, {len(orders)} of {total_records} total){filter_text}:\n"
+        # Calculate display info
+        pages_fetched = min(max_auto_pages, total_pages - page + 1) if auto_paginate else 1
+        end_page = page + pages_fetched - 1
+        
+        if auto_paginate and pages_fetched > 1:
+            response = f"Customer Orders (Auto-paginated: Pages {page}-{end_page}, {len(all_orders)} of {total_records} total){filter_text}:\n"
+        else:
+            response = f"Customer Orders (Page {page}, {len(all_orders)} of {total_records} total){filter_text}:\n"
         response += "=" * 80 + "\n"
         
-        for order in orders:
-            response += format_customer_order(order, show_positions=False)  # Compact view for lists
+        for order in all_orders:
+            response += format_customer_order(order, show_positions=False)
             response += "-" * 80 + "\n"
             
-        # Add pagination info if there are more pages
-        if total_pages > 1:
+        # Add pagination guidance
+        if total_pages > end_page:
             response += "\n" + "=" * 80 + "\n"
-            response += f"📄 PAGINATION: Currently showing page {current_page} of {total_pages}\n"
-            if current_page < total_pages:
-                response += f"💡 TIP: Use 'get_next_page_orders' to continue to page {current_page + 1}, or 'browse_customer_orders_paginated' to see more pages with confirmation.\n"
+            response += f"📄 PAGINATION: Showing {len(all_orders)} records from {pages_fetched} pages\n"
+            response += f"💡 NEXT: Use page={end_page + 1} to continue, or get_customer_orders_bulk(start_page={end_page + 1}) for bulk fetching\n"
+            response += f"📊 BULK: Use get_customer_orders_bulk() for 200+ records with array storage\n"
+        elif len(all_orders) >= 200:
+            response += "\n" + "=" * 80 + "\n"
+            response += f"📊 BULK DATA: Fetched {len(all_orders)} records. Use get_customer_orders_bulk() for structured array storage of large datasets\n"
         
         return response
         
@@ -586,7 +638,7 @@ async def browse_customer_orders_paginated(
 @mcp.tool()
 async def get_latest_orders_for_customer(
     customer_no: str,
-    max_results: int = 25,
+    max_results: int = 50,
     days_back: int = 90
 ) -> str:
     """
@@ -635,80 +687,89 @@ async def get_latest_orders_for_customer(
         return f"Error retrieving latest orders for customer {customer_no}: {str(e)}"
 
 @mcp.tool()
-async def get_overdue_orders(
+async def check_customer_order_overdue(
+    customer_no: str,
     days_overdue: int = 7,
-    max_results: int = 50,
-    status_filter: Optional[str] = None
+    max_results: int = 50
 ) -> str:
     """
-    Find orders that are past their due date efficiently.
+    Check for overdue orders for a specific customer.
+    This is efficient because it uses the customerNo API filter.
     
     Args:
+        customer_no: Customer number to check (required for efficiency)
         days_overdue: Number of days past due date to consider (default: 7)
-        max_results: Maximum number of orders to return (default: 50)
-        status_filter: Optional status filter (e.g., 'RELEASED', 'IN_PRODUCTION')
+        max_results: Maximum number of orders to return (default: 50, API max)
         
     Returns:
-        Orders that are overdue based on their planned dates
+        Overdue orders for the specified customer
     """
-    # Calculate cutoff date (orders that should have been completed by this date)
-    cutoff_date = (datetime.now() - timedelta(days=days_overdue)).strftime("%Y-%m-%dT%H:%M:%S")
-    
     params = {
+        "customerNo": customer_no,
         "size": min(max_results, 50),
         "page": 0,
         "sortBy": "modificationDate",
         "sortOrder": "desc"
     }
     
-    # Add status filter if provided
-    if status_filter:
-        params["status"] = status_filter.upper()
-    
     try:
-        # First, get recent orders and then filter for overdue ones
         result = await make_oseon_request("/api/v2/sales/customerOrders", params)
         
         if not result.get("collection"):
-            return "No orders found to check for overdue status."
+            return f"No orders found for customer {customer_no}."
             
         orders = result["collection"]
         overdue_orders = []
         
         for order in orders:
-            # Check if order has delivery date or planned end date
             delivery_date = order.get('deliveryDate')
-            order_date = order.get('orderDate')
             status = order.get('status', '')
             
-            # Consider orders overdue if they're not completed and past expected delivery
-            if delivery_date and status not in ['COMPLETED', 'INVOICED', 'DELIVERED']:
+            if delivery_date and status not in ['COMPLETED', 'INVOICED', 'DELIVERED', 'FINISHED', 'CLOSED']:
                 try:
-                    # Parse delivery date and check if it's past due
-                    delivery_dt = datetime.fromisoformat(delivery_date.replace('Z', '+00:00'))
-                    if delivery_dt < datetime.now() - timedelta(days=days_overdue):
-                        overdue_orders.append(order)
+                    delivery_dt = None
+                    
+                    # Try ISO format first
+                    try:
+                        delivery_dt = datetime.fromisoformat(delivery_date.replace('Z', '+00:00'))
+                        if delivery_dt.tzinfo is not None:
+                            delivery_dt = delivery_dt.replace(tzinfo=None)
+                    except ValueError:
+                        try:
+                            delivery_dt = datetime.strptime(delivery_date, "%d.%m.%Y %H:%M:%S")
+                        except ValueError:
+                            continue
+                    
+                    if delivery_dt is None:
+                        continue
+                        
+                    now = datetime.now()
+                    if delivery_dt < now:
+                        days_past_due = (now - delivery_dt).days
+                        if days_past_due >= days_overdue:
+                            order['days_past_due'] = days_past_due
+                            overdue_orders.append(order)
                 except (ValueError, TypeError):
                     continue
                     
         if not overdue_orders:
-            return f"✅ No orders found that are more than {days_overdue} days overdue."
+            return f"✅ No overdue orders found for customer {customer_no}."
             
-        response = f"⚠️  OVERDUE ORDERS (Past due by {days_overdue}+ days):\n"
+        response = f"⚠️  OVERDUE ORDERS for Customer {customer_no} (Past due by {days_overdue}+ days):\n"
         response += f"Found {len(overdue_orders)} overdue orders\n"
         response += "=" * 80 + "\n"
         
         for order in overdue_orders:
             response += format_customer_order(order, show_positions=False)
-            # Add overdue info
             delivery_date = order.get('deliveryDate', 'N/A')
-            response += f"   🔴 OVERDUE: Delivery planned for {delivery_date}\n"
+            days_past_due = order.get('days_past_due', 'N/A')
+            response += f"   🔴 OVERDUE: Delivery planned for {delivery_date} ({days_past_due} days overdue)\n"
             response += "-" * 80 + "\n"
             
         return response
         
     except Exception as e:
-        return f"Error checking for overdue orders: {str(e)}"
+        return f"Error checking overdue orders for customer {customer_no}: {str(e)}"
 
 @mcp.tool()
 async def get_orders_with_advanced_filter(
@@ -869,171 +930,198 @@ async def get_customer_order_details(customer_order_no: str) -> str:
         return f"Error retrieving customer order details: {str(e)}"
 
 @mcp.tool()
-async def get_newest_orders(max_results: int = 25, since_days: int = 7) -> str:
+async def get_in_progress_production_orders(
+    max_results: int = 50,
+    since_days: Optional[int] = None,
+    search_term: Optional[str] = None
+) -> str:
     """
-    Get the newest customer orders (typically INCOMPLETE, VALID, INVALID status - not yet released for production).
-    These are orders most likely in pre-production phase that haven't been released yet.
+    Get production orders with IN_PROGRESS status (API status = 60).
+    These orders are currently being manufactured.
     
     Args:
-        max_results: Maximum number of results to return (default: 25)
-        since_days: Look for orders from the last N days (default: 7)
+        max_results: Maximum number of results to return (default: 50, API max)
+        since_days: Optional filter for orders from last N days
+        search_term: Optional search term for OrderNo, OrderNoExt, Description
         
     Returns:
-        Formatted list of newest orders
+        Formatted list of in-progress production orders
     """
-    # Calculate the date threshold
-    since_date = datetime.now() - timedelta(days=since_days)
-    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
-    
     params = {
-        "since": since_iso,
-        "size": min(max_results, 50)
+        "status": "IN_PROGRESS",  # API status value
+        "size": min(max_results, 50),
+        "page": 0
     }
     
+    if since_days:
+        since_date = datetime.now() - timedelta(days=since_days)
+        params["since"] = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+        
+    if search_term:
+        params["searchBy"] = search_term
+    
     try:
-        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
         
         if not result.get("collection"):
-            return f"No orders found in the last {since_days} days."
+            return "No in-progress production orders found with the specified criteria."
             
         orders = result["collection"]
+        total_records = result.get("records", len(orders))
         
-        # Filter for "newest" status categories
-        newest_orders = []
-        for order in orders:
-            status_category = get_order_status_category(order.get('status', ''))
-            if status_category == "NEWEST":
-                newest_orders.append(order)
+        since_text = f" (last {since_days} days)" if since_days else ""
+        search_text = f" matching '{search_term}'" if search_term else ""
         
-        if not newest_orders:
-            return f"No 'newest' orders (pre-production status) found in the last {since_days} days."
+        response = f"IN-PROGRESS PRODUCTION ORDERS{since_text}{search_text} - {len(orders)} of {total_records} orders:\n"
+        response += "=" * 100 + "\n"
         
-        total_found = len(newest_orders)
-        
-        response = f"NEWEST ORDERS (Pre-production, last {since_days} days) - {total_found} orders:\n"
-        response += "=" * 80 + "\n"
-        
-        for order in newest_orders[:max_results]:
-            response += format_customer_order(order, show_positions=False)
-            response += "-" * 80 + "\n"
+        for order in orders[:max_results]:
+            response += format_production_order(order, show_operations=True)
+            response += "-" * 100 + "\n"
+            
+        # Add pagination guidance
+        if len(orders) >= 50 and total_records > len(orders):
+            response += f"\n📄 PAGINATION: Showing {len(orders)} of {total_records} total records\n"
+            response += f"💡 MORE: Use get_production_orders() with status=IN_PROGRESS for auto-pagination up to 200 records\n"
+            response += f"📊 BULK: Use get_production_orders_bulk() for 200+ records with array storage\n"
+        elif len(orders) > max_results:
+            response += f"\n💡 Showing {max_results} of {len(orders)} orders. Use max_results={len(orders)} to see all.\n"
             
         return response
         
     except Exception as e:
-        return f"Error retrieving newest orders: {str(e)}"
+        return f"Error retrieving in-progress production orders: {str(e)}"
 
 @mcp.tool()
-async def get_released_orders(max_results: int = 25, since_days: int = 30) -> str:
+async def get_released_production_orders(
+    max_results: int = 50,
+    since_days: Optional[int] = None,
+    search_term: Optional[str] = None
+) -> str:
     """
-    Get orders that are released for production (RELEASED, SCHEDULED, IN_PRODUCTION status).
-    These orders are currently in the manufacturing phase.
+    Get production orders with RELEASED status (API status = 30).
+    These orders are released for production but not yet in progress.
     
     Args:
-        max_results: Maximum number of results to return (default: 25)
-        since_days: Look for orders from the last N days (default: 30)
+        max_results: Maximum number of results to return (default: 50, API max)
+        since_days: Optional filter for orders from last N days
+        search_term: Optional search term for OrderNo, OrderNoExt, Description
         
     Returns:
-        Formatted list of released orders
+        Formatted list of released production orders
     """
-    # Calculate the date threshold
-    since_date = datetime.now() - timedelta(days=since_days)
-    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
-    
     params = {
-        "since": since_iso,
-        "size": min(max_results, 50)
+        "status": "RELEASED",  # API status value
+        "size": min(max_results, 50),
+        "page": 0
     }
     
+    if since_days:
+        since_date = datetime.now() - timedelta(days=since_days)
+        params["since"] = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+        
+    if search_term:
+        params["searchBy"] = search_term
+    
     try:
-        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
         
         if not result.get("collection"):
-            return f"No orders found in the last {since_days} days."
+            return "No released production orders found with the specified criteria."
             
         orders = result["collection"]
+        total_records = result.get("records", len(orders))
         
-        # Filter for "released" status categories
-        released_orders = []
-        for order in orders:
-            status_category = get_order_status_category(order.get('status', ''))
-            if status_category == "RELEASED":
-                released_orders.append(order)
+        since_text = f" (last {since_days} days)" if since_days else ""
+        search_text = f" matching '{search_term}'" if search_term else ""
         
-        if not released_orders:
-            return f"No 'released' orders (in production) found in the last {since_days} days."
+        response = f"RELEASED PRODUCTION ORDERS{since_text}{search_text} - {len(orders)} of {total_records} orders:\n"
+        response += "=" * 100 + "\n"
         
-        total_found = len(released_orders)
-        
-        response = f"RELEASED ORDERS (In production, last {since_days} days) - {total_found} orders:\n"
-        response += "=" * 80 + "\n"
-        
-        for order in released_orders[:max_results]:
-            response += format_customer_order(order, show_positions=False)
-            response += "-" * 80 + "\n"
+        for order in orders[:max_results]:
+            response += format_production_order(order, show_operations=True)
+            response += "-" * 100 + "\n"
+            
+        # Add pagination guidance
+        if len(orders) >= 50 and total_records > len(orders):
+            response += f"\n📄 PAGINATION: Showing {len(orders)} of {total_records} total records\n"
+            response += f"💡 MORE: Use get_production_orders() with status=RELEASED for auto-pagination up to 200 records\n"
+            response += f"📊 BULK: Use get_production_orders_bulk() for 200+ records with array storage\n"
+        elif len(orders) > max_results:
+            response += f"\n💡 Showing {max_results} of {len(orders)} orders. Use max_results={len(orders)} to see all.\n"
             
         return response
         
     except Exception as e:
-        return f"Error retrieving released orders: {str(e)}"
+        return f"Error retrieving released production orders: {str(e)}"
 
 @mcp.tool()
-async def get_completed_orders(max_results: int = 25, since_days: int = 30) -> str:
+async def get_finished_production_orders(
+    max_results: int = 50,
+    since_days: Optional[int] = None,
+    search_term: Optional[str] = None
+) -> str:
     """
-    Get completed orders (COMPLETED, DELIVERED, INVOICED status).
-    These orders have been finished and delivered/invoiced.
+    Get production orders with FINISHED status (API status = 90).
+    These orders have completed manufacturing.
     
     Args:
-        max_results: Maximum number of results to return (default: 25)
-        since_days: Look for orders from the last N days (default: 30)
+        max_results: Maximum number of results to return (default: 50, API max)
+        since_days: Optional filter for orders from last N days
+        search_term: Optional search term for OrderNo, OrderNoExt, Description
         
     Returns:
-        Formatted list of completed orders
+        Formatted list of finished production orders
     """
-    # Calculate the date threshold
-    since_date = datetime.now() - timedelta(days=since_days)
-    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
-    
     params = {
-        "since": since_iso,
-        "size": min(max_results, 50)
+        "status": "FINISHED",  # API status value
+        "size": min(max_results, 50),
+        "page": 0
     }
     
+    if since_days:
+        since_date = datetime.now() - timedelta(days=since_days)
+        params["since"] = since_date.strftime("%Y-%m-%dT%H:%M:%S")
+        
+    if search_term:
+        params["searchBy"] = search_term
+    
     try:
-        result = await make_oseon_request("/api/v2/sales/customerOrders", params)
+        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
         
         if not result.get("collection"):
-            return f"No orders found in the last {since_days} days."
+            return "No finished production orders found with the specified criteria."
             
         orders = result["collection"]
+        total_records = result.get("records", len(orders))
         
-        # Filter for "completed" status categories
-        completed_orders = []
-        for order in orders:
-            status_category = get_order_status_category(order.get('status', ''))
-            if status_category == "COMPLETED":
-                completed_orders.append(order)
+        since_text = f" (last {since_days} days)" if since_days else ""
+        search_text = f" matching '{search_term}'" if search_term else ""
         
-        if not completed_orders:
-            return f"No 'completed' orders (delivered/invoiced) found in the last {since_days} days."
+        response = f"FINISHED PRODUCTION ORDERS{since_text}{search_text} - {len(orders)} of {total_records} orders:\n"
+        response += "=" * 100 + "\n"
         
-        total_found = len(completed_orders)
-        
-        response = f"COMPLETED ORDERS (Delivered/Invoiced, last {since_days} days) - {total_found} orders:\n"
-        response += "=" * 80 + "\n"
-        
-        for order in completed_orders[:max_results]:
-            response += format_customer_order(order, show_positions=False)
-            response += "-" * 80 + "\n"
+        for order in orders[:max_results]:
+            response += format_production_order(order, show_operations=True)
+            response += "-" * 100 + "\n"
+            
+        # Add pagination guidance
+        if len(orders) >= 50 and total_records > len(orders):
+            response += f"\n📄 PAGINATION: Showing {len(orders)} of {total_records} total records\n"
+            response += f"💡 MORE: Use get_production_orders() with status=FINISHED for auto-pagination up to 200 records\n"
+            response += f"📊 BULK: Use get_production_orders_bulk() for 200+ records with array storage\n"
+        elif len(orders) > max_results:
+            response += f"\n💡 Showing {max_results} of {len(orders)} orders. Use max_results={len(orders)} to see all.\n"
             
         return response
         
     except Exception as e:
-        return f"Error retrieving completed orders: {str(e)}"
+        return f"Error retrieving finished production orders: {str(e)}"
 
 @mcp.tool()
 async def search_orders_advanced(
     search_term: str, 
-    max_results: int = 25,
+    max_results: int = 50,
     status_category: Optional[str] = None,
     customer_no: Optional[str] = None,
     since_date: Optional[str] = None
@@ -1111,7 +1199,7 @@ async def search_orders_advanced(
 @mcp.tool()
 async def get_modified_orders(
     since_date: str, 
-    max_results: int = 25,
+    max_results: int = 50,
     status_category: Optional[str] = None,
     customer_no: Optional[str] = None
 ) -> str:
@@ -1227,7 +1315,7 @@ async def get_recent_orders(days: int = 30, max_results: int = 25) -> str:
 @mcp.tool()
 async def get_orders_by_item(
     item_no: str, 
-    max_results: int = 25,
+    max_results: int = 50,
     status_category: Optional[str] = None,
     since_date: Optional[str] = None
 ) -> str:
@@ -1310,73 +1398,68 @@ async def get_orders_by_item(
 
 @mcp.tool()
 async def get_production_orders(
-    size: int = 25,
+    size: int = 50,
     page: int = 1,
     status: Optional[int] = None,
     search_term: Optional[str] = None,
     since_date: Optional[str] = None,
     get_latest: bool = True,
-    max_pages: int = 1
+    auto_paginate: bool = True
 ) -> str:
     """
     Get production orders with filtering options.
+    Automatically fetches up to 200 records (4 pages) by default.
     
     Args:
-        size: Number of records per page (max 50, default: 25)
+        size: Number of records per page (default: 50, API max)
         page: Page number (1-based, default: 1)
         status: Optional status filter (integer)
         search_term: Search keyword for OrderNo, OrderNoExt, and Description (supports wildcards with %)
         since_date: Optional ISO 8601 date/time filter (e.g., "2024-01-01T00:00:00")
         get_latest: If True, automatically gets recent records from end of dataset (default: True)
-        max_pages: Maximum number of consecutive pages to fetch (default: 1, max: 10)
+        auto_paginate: If True, automatically fetches up to 200 records (default: True)
         
     Returns:
         Formatted list of production orders with key details
     """
-    # Limit max_pages for performance
-    max_pages = min(max_pages, 10)
-    
-    # Get standard parameters
-    base_params = get_standard_production_order_params(size, page, status, search_term, since_date)
-    
-    # If get_latest is True and page is 1 (default), get recent records
-    if get_latest and page == 1:
-        params = await get_recent_production_orders_params(base_params)
-        start_page = params.get('page', 0)
-    else:
-        params = base_params
-        start_page = params.get('page', 0)
-    
+    # Auto-paginate up to 200 records (4 pages) if enabled
     all_orders = []
+    max_auto_pages = 4 if auto_paginate and page == 1 else 1
     total_pages = 0
     total_records = 0
-    current_page_display = 0
     
-    # Fetch multiple pages if requested
-    for page_offset in range(max_pages):
-        page_params = params.copy()
-        page_params['page'] = start_page + page_offset
-    
+    for page_num in range(page, page + max_auto_pages):
+        base_params = get_standard_production_order_params(size, page_num, status, search_term, since_date)
+        
+        # If get_latest is True and first page, get recent records
+        if get_latest and page_num == page:
+            params = await get_recent_production_orders_params(base_params)
+        else:
+            params = base_params
+        
         try:
-            result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", page_params)
+            result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
             
             if not result.get("collection"):
-                if page_offset == 0:
+                if page_num == page:  # First page
                     return "No production orders found with the specified criteria."
                 else:
-                    break  # No more data, stop fetching
+                    break  # No more data
                     
             orders = result["collection"]
             all_orders.extend(orders)
             
-            # Capture metadata from first successful request
-            if page_offset == 0:
+            # Store metadata from first successful request
+            if page_num == page:
                 total_pages = result.get("pages", 1)
                 total_records = result.get("records", 0)
-                current_page_display = result.get("currentPage", 0) + 1
+            
+            # If we got less than requested size, we've reached the end
+            if len(orders) < size:
+                break
                 
         except Exception as e:
-            if page_offset == 0:
+            if page_num == page:
                 return f"Error retrieving production orders: {str(e)}"
             else:
                 break  # Error fetching additional pages, stop here
@@ -1384,27 +1467,29 @@ async def get_production_orders(
     if not all_orders:
         return "No production orders found with the specified criteria."
     
-    # Calculate page range for display
-    end_page = current_page_display + max_pages - 1
-    if max_pages > 1:
-        page_range = f"Pages {current_page_display}-{min(end_page, total_pages)}"
+    # Calculate display info
+    pages_fetched = min(max_auto_pages, total_pages - page + 1) if auto_paginate else 1
+    end_page = page + pages_fetched - 1
+    
+    if auto_paginate and pages_fetched > 1:
+        response = f"PRODUCTION ORDERS (Auto-paginated: Pages {page}-{end_page}, {len(all_orders)} of {total_records} total):\n"
     else:
-        page_range = f"Page {current_page_display}"
-        
-    response = f"PRODUCTION ORDERS - Showing {len(all_orders)} of {total_records} orders ({page_range} of {total_pages}):\n"
+        response = f"PRODUCTION ORDERS (Page {page}, {len(all_orders)} of {total_records} total):\n"
     response += "=" * 100 + "\n"
     
     for order in all_orders:
         response += format_production_order(order)
         response += "-" * 100 + "\n"
         
-    if total_pages > 1:
+    # Add pagination guidance
+    if total_pages > end_page:
         response += "\n" + "=" * 100 + "\n"
-        response += f"📄 PAGINATION: Currently showing {page_range} of {total_pages} total pages\n"
-        if max_pages == 1 and current_page_display < total_pages:
-            response += f"💡 TIP: Use page={current_page_display + 1} or max_pages=3 to get more pages\n"
-        elif max_pages > 1 and end_page < total_pages:
-            response += f"💡 TIP: Use page={end_page + 1} to continue, or increase max_pages for more data\n"
+        response += f"📄 PAGINATION: Showing {len(all_orders)} records from {pages_fetched} pages\n"
+        response += f"💡 NEXT: Use page={end_page + 1} to continue, or get_production_orders_bulk(start_page={end_page + 1}) for bulk fetching\n"
+        response += f"📊 BULK: Use get_production_orders_bulk() for 200+ records with array storage\n"
+    elif len(all_orders) >= 200:
+        response += "\n" + "=" * 100 + "\n"
+        response += f"📊 BULK DATA: Fetched {len(all_orders)} records. Use get_production_orders_bulk() for structured array storage of large datasets\n"
             
     return response
 
@@ -1777,115 +1862,41 @@ async def get_customer_orders_bulk(
         
     return response
 
-@mcp.tool()
-async def get_production_status_overview(days_back: int = 30, max_results: int = 100) -> str:
-    """
-    Get an overview of production status for recent orders.
-    Perfect for answering "How's production?" questions.
-    
-    Args:
-        days_back: Look at orders from the last N days (default: 30)
-        max_results: Maximum number of orders to analyze (default: 100)
-        
-    Returns:
-        Production status summary with counts by status and workplace
-    """
-    # Use recent date filter for meaningful data
-    since_date = datetime.now() - timedelta(days=days_back)
-    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
-    
-    # Get standard parameters with date filter
-    base_params = get_standard_production_order_params(50, 1, None, None, since_iso)
-    
-    # Get recent records
-    params = await get_recent_production_orders_params(base_params, max_results)
-    
-    try:
-        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
-        
-        if not result.get("collection"):
-            return f"No production orders found in the last {days_back} days."
-            
-        orders = result["collection"]
-        
-        # Analyze status distribution
-        status_counts = {}
-        workplace_counts = {}
-        overdue_count = 0
-        total_orders = len(orders)
-        
-        for order in orders:
-            # Count by status
-            status = order.get("status", "Unknown")
-            status_counts[status] = status_counts.get(status, 0) + 1
-            
-            # Count by active workplace (from operations)
-            active_workplaces = set()
-            for operation in order.get("operations", []):
-                if operation.get("status") not in ["COMPLETED", "CANCELED"]:
-                    workplace = operation.get("workplaceName", "Unknown")
-                    active_workplaces.add(workplace)
-            
-            for workplace in active_workplaces:
-                workplace_counts[workplace] = workplace_counts.get(workplace, 0) + 1
-            
-            # Check if overdue
-            due_date_str = order.get("dueDate")
-            if due_date_str and is_order_overdue(due_date_str, order.get("status")):
-                overdue_count += 1
-        
-        response = f"PRODUCTION STATUS OVERVIEW (Last {days_back} days) - {total_orders} orders analyzed:\n"
-        response += "=" * 100 + "\n\n"
-        
-        # Status summary
-        response += "📊 STATUS DISTRIBUTION:\n"
-        for status, count in sorted(status_counts.items()):
-            percentage = (count / total_orders) * 100
-            response += f"   Status {status}: {count} orders ({percentage:.1f}%)\n"
-        
-        response += f"\n⚠️  OVERDUE ORDERS: {overdue_count} ({(overdue_count/total_orders)*100:.1f}%)\n\n"
-        
-        # Active workplaces
-        if workplace_counts:
-            response += "🏭 ACTIVE WORKPLACES:\n"
-            for workplace, count in sorted(workplace_counts.items(), key=lambda x: x[1], reverse=True):
-                response += f"   {workplace}: {count} active orders\n"
-        
-        response += "\n💡 Use 'get_overdue_production_orders' to see which orders are behind schedule.\n"
-        response += "💡 Use 'get_active_production_orders' to see orders currently in progress.\n"
-        
-        return response
-        
-    except Exception as e:
-        return f"Error getting production status overview: {str(e)}"
+# Removed get_production_status_overview - inefficient data scanning
+# Use specific status functions instead:
+# - get_released_production_orders() for RELEASED status
+# - get_in_progress_production_orders() for IN_PROGRESS status  
+# - get_finished_production_orders() for FINISHED status
 
 @mcp.tool()
-async def get_overdue_production_orders(max_results: int = 25, days_back: int = 90) -> str:
+async def check_production_order_overdue(
+    search_term: str,
+    days_overdue: int = 7,
+    max_results: int = 50
+) -> str:
     """
-    Get production orders that are past their due date.
+    Check for overdue production orders matching a search term.
+    This is efficient because it uses the searchBy API filter.
     
     Args:
-        max_results: Maximum number of results to return (default: 25)
-        days_back: Look at orders from last N days (default: 90)
+        search_term: Search term for OrderNo, OrderNoExt, Description (required for efficiency)
+        days_overdue: Number of days past due date to consider (default: 7)
+        max_results: Maximum number of results to return (default: 50, API max)
         
     Returns:
-        List of overdue production orders with urgency indicators
+        Overdue production orders matching the search term
     """
-    # Use recent date filter for meaningful data
-    since_date = datetime.now() - timedelta(days=days_back)
-    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%S")
-    
-    # Get standard parameters with date filter
-    base_params = get_standard_production_order_params(50, 1, None, None, since_iso)
-    
-    # Get recent records (more than max_results to filter for overdue)
-    params = await get_recent_production_orders_params(base_params, max_results * 3)
+    params = {
+        "searchBy": search_term,
+        "size": min(max_results, 50),
+        "page": 0
+    }
     
     try:
         result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
         
         if not result.get("collection"):
-            return f"No production orders found in the last {days_back} days."
+            return f"No production orders found matching '{search_term}'."
             
         orders = result["collection"]
         overdue_orders = []
@@ -1893,97 +1904,43 @@ async def get_overdue_production_orders(max_results: int = 25, days_back: int = 
         for order in orders:
             due_date_str = order.get("dueDate")
             if due_date_str and is_order_overdue(due_date_str, order.get("status")):
-                # Calculate days overdue
                 try:
                     due_date = datetime.strptime(due_date_str, "%d.%m.%Y %H:%M:%S")
-                    days_overdue = (datetime.now() - due_date).days
-                    order["days_overdue"] = days_overdue
-                    overdue_orders.append(order)
+                    days_past_due = (datetime.now() - due_date).days
+                    if days_past_due >= days_overdue:
+                        order["days_overdue"] = days_past_due
+                        overdue_orders.append(order)
                 except ValueError:
-                    pass  # Skip if date parsing fails
+                    pass
         
         if not overdue_orders:
-            return "🎉 No overdue production orders found!"
+            return f"✅ No overdue production orders found matching '{search_term}'."
         
-        # Sort by days overdue (most urgent first)
         overdue_orders.sort(key=lambda x: x.get("days_overdue", 0), reverse=True)
         
-        response = f"⚠️ OVERDUE PRODUCTION ORDERS - {len(overdue_orders)} orders behind schedule:\n"
+        response = f"⚠️ OVERDUE PRODUCTION ORDERS matching '{search_term}' - {len(overdue_orders)} orders:\n"
         response += "=" * 100 + "\n"
         
         for order in overdue_orders[:max_results]:
-            days_overdue = order.get("days_overdue", 0)
-            urgency = "🔴 CRITICAL" if days_overdue > 7 else "🟡 URGENT" if days_overdue > 3 else "🟠 OVERDUE"
+            days_past_due = order.get("days_overdue", 0)
+            urgency = "🔴 CRITICAL" if days_past_due > 7 else "🟡 URGENT" if days_past_due > 3 else "🟠 OVERDUE"
             
-            response += f"{urgency} ({days_overdue} days overdue)\n"
+            response += f"{urgency} ({days_past_due} days overdue)\n"
             response += format_production_order(order, show_operations=True)
             response += "-" * 100 + "\n"
             
         return response
         
     except Exception as e:
-        return f"Error retrieving overdue production orders: {str(e)}"
+        return f"Error checking overdue production orders: {str(e)}"
 
-@mcp.tool()
-async def get_active_production_orders(max_results: int = 25, workplace: Optional[str] = None) -> str:
-    """
-    Get production orders that are currently active (in progress).
-    
-    Args:
-        max_results: Maximum number of results to return (default: 25)
-        workplace: Optional filter by workplace name (case-insensitive)
-        
-    Returns:
-        List of active production orders with current operation details
-    """
-    params = {"size": min(max_results, 50)}
-    
-    try:
-        result = await make_oseon_request("/api/v2/pps/productionOrders/full/search", params)
-        
-        if not result.get("collection"):
-            return "No production orders found."
-            
-        orders = result["collection"]
-        active_orders = []
-        
-        for order in orders:
-            # Check if order has active operations
-            active_operations = []
-            for operation in order.get("operations", []):
-                op_status = operation.get("status", "")
-                if op_status not in ["COMPLETED", "CANCELED"]:
-                    # Filter by workplace if specified
-                    if workplace:
-                        op_workplace = operation.get("workplaceName", "").lower()
-                        if workplace.lower() not in op_workplace:
-                            continue
-                    active_operations.append(operation)
-            
-            if active_operations:
-                order["active_operations"] = active_operations
-                active_orders.append(order)
-        
-        if not active_orders:
-            workplace_filter = f" at workplace '{workplace}'" if workplace else ""
-            return f"No active production orders found{workplace_filter}."
-        
-        response = f"🔄 ACTIVE PRODUCTION ORDERS{f' (Workplace: {workplace})' if workplace else ''} - {len(active_orders)} orders:\n"
-        response += "=" * 100 + "\n"
-        
-        for order in active_orders[:max_results]:
-            response += format_production_order(order, show_operations=True, highlight_active=True)
-            response += "-" * 100 + "\n"
-            
-        return response
-        
-    except Exception as e:
-        return f"Error retrieving active production orders: {str(e)}"
+# Removed get_active_production_orders - inefficient operation scanning
+# Use get_in_progress_production_orders instead for orders with IN_PROGRESS status
 
 @mcp.tool()
 async def search_production_orders(
     search_term: str,
-    max_results: int = 25,
+    max_results: int = 50,
     status: Optional[int] = None
 ) -> str:
     """
