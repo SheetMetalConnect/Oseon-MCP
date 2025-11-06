@@ -9,15 +9,16 @@ for customer order management. This demonstration shows how to integrate MCP cli
 🏭 Tech Demo - TRUMPF Oseon is a trademark of TRUMPF Co. KG | No affiliation - Educational demonstration only
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "Luke van Enkhuizen"
 __email__ = "luke@sheetmetalconnect.com"
 __url__ = "https://github.com/sheetmetalconnect/trumpf-oseon-mcp"
 
+from .api.client import OseonAPIClient
 from .config import get_config
-from .__main__ import mcp, make_oseon_request
+from .__main__ import mcp
 
 # Initialize configuration
 OSEON_CONFIG = get_config()
 
-__all__ = ["OSEON_CONFIG", "get_config", "make_oseon_request", "mcp"] 
+__all__ = ["OSEON_CONFIG", "get_config", "OseonAPIClient", "mcp"] 
