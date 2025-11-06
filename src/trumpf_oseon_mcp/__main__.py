@@ -496,3 +496,30 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ================================================================================================
+# UTILITY TOOLS
+# ================================================================================================
+
+
+@mcp.tool()
+async def health_check() -> str:
+    """Check MCP server and Oseon API connectivity.
+
+    Tests connection to the Oseon API and validates authentication.
+    Useful for troubleshooting and monitoring.
+
+    Returns:
+        Health status message
+    """
+    try:
+        is_healthy = await api_client.health_check()
+        if is_healthy:
+            return f"✅ Healthy\n\nMCP Server: Running\nOseon API: {OSEON_CONFIG['base_url']}\nAuthentication: Valid\nConnection: OK"
+        else:
+            return "❌ Unhealthy - Unknown error"
+
+    except Exception as e:
+        error_type = type(e).__name__
+        return f"❌ Unhealthy\n\nError: {error_type}\nMessage: {str(e)}\n\nCheck your configuration and network connection."

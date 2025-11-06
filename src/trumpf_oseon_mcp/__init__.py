@@ -22,3 +22,28 @@ from .__main__ import mcp
 OSEON_CONFIG = get_config()
 
 __all__ = ["OSEON_CONFIG", "get_config", "OseonAPIClient", "mcp"] 
+
+# Export exceptions for easier access
+from .exceptions import (
+    OseonError,
+    OseonAPIError,
+    OseonConnectionError,
+    OseonAuthenticationError,
+    OseonNotFoundError,
+    OseonRateLimitError,
+    OseonServerError,
+    OseonValidationError,
+    OseonConfigurationError,
+)
+
+__all__.extend([
+    'OseonError',
+    'OseonAPIError',
+    'OseonConnectionError',
+    'OseonAuthenticationError',
+    'OseonNotFoundError',
+    'OseonRateLimitError',
+    'OseonServerError',
+    'OseonValidationError',
+    'OseonConfigurationError',
+])

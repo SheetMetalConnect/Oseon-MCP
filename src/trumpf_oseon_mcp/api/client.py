@@ -10,6 +10,14 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from ..exceptions import (
+    OseonAuthenticationError,
+    OseonConnectionError,
+    OseonNotFoundError,
+    OseonRateLimitError,
+    OseonServerError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +43,10 @@ class OseonAPIClient:
         self.username = config['username']
         self.password = config['password']
         self.default_headers = config['default_headers'].copy()
+        
+        # Log initialization without exposing credentials
+        logger.info(f"Initialized Oseon API client for {self.base_url}")
+        logger.debug(f"Username: {self.username}")  # Debug level only
 
     def _get_auth_header(self) -> str:
         """Generate Basic Auth header for TRUMPF Oseon API.
@@ -63,7 +75,11 @@ class OseonAPIClient:
             JSON response as dictionary
 
         Raises:
-            Exception: If the request fails or returns an error status
+            OseonAuthenticationError: If authentication fails (401/403)
+            OseonNotFoundError: If resource not found (404)
+            OseonRateLimitError: If rate limit exceeded (429)
+            OseonServerError: If server error (5xx)
+            OseonConnectionError: For other connection/network errors
         """
         url = f"{self.base_url}{endpoint}"
         headers = self.default_headers.copy()
@@ -83,11 +99,43 @@ class OseonAPIClient:
                 return result
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
-            raise Exception(f"API request failed with status {e.response.status_code}: {e.response.text}")
+            status_code = e.response.status_code
+            logger.error(f"HTTP error {status_code}")
+
+            if status_code == 401 or status_code == 403:
+                raise OseonAuthenticationError(
+                    f"Authentication failed (status {status_code}). Check credentials."
+                )
+            elif status_code == 404:
+                raise OseonNotFoundError(
+                    f"Resource not found: {endpoint}"
+                )
+            elif status_code == 429:
+                raise OseonRateLimitError(
+                    f"API rate limit exceeded. Please retry later."
+                )
+            elif status_code >= 500:
+                raise OseonServerError(
+                    f"Oseon server error (status {status_code})"
+                )
+            else:
+                raise OseonConnectionError(
+                    f"API request failed with status {status_code}"
+                )
+
+        except httpx.ConnectError as e:
+            logger.error(f"Connection failed: {str(e)}")
+            raise OseonConnectionError(
+                f"Failed to connect to Oseon API at {self.base_url}. Check network and URL."
+            )
+        except httpx.TimeoutException as e:
+            logger.error(f"Request timeout: {str(e)}")
+            raise OseonConnectionError(
+                f"Request to Oseon API timed out after {timeout}s"
+            )
         except Exception as e:
-            logger.error(f"Request failed: {str(e)}")
-            raise Exception(f"Failed to connect to TRUMPF Oseon API: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}")
+            raise OseonConnectionError(f"Unexpected error communicating with Oseon API: {str(e)}")
 
     async def get_customer_orders(
         self,
@@ -130,3 +178,21 @@ class OseonAPIClient:
             API response containing customer order details
         """
         return await self.request(f"/api/v2/sales/customerOrders/{order_no}")
+
+    async def health_check(self) -> bool:
+        """Check API connectivity and authentication.
+
+        Returns:
+            True if API is accessible and credentials are valid
+
+        Raises:
+            OseonConnectionError: If connection fails
+            OseonAuthenticationError: If authentication fails
+        """
+        try:
+            # Try to fetch first page with minimal data
+            await self.get_customer_orders({"size": 1, "page": 0})
+            return True
+        except Exception:
+            # Re-raise to preserve specific exception type
+            raise
