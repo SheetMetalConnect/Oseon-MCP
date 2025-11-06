@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trumpf-oseon-mcp"
-version = "1.0.0"
-description = "MCP Server Demonstration for TRUMPF Oseon Customer Interface"
+version = "2.0.0"
+description = "Modular MCP Server for TRUMPF Oseon API - Read-only customer and production order management with pagination"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [

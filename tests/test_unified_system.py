@@ -14,12 +14,12 @@ from dotenv import load_dotenv
 # Add src to path to import our modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from trumpf_oseon_mcp.__main__ import (
+from trumpf_oseon_mcp.utils.filters import (
     get_default_since_date,
-    get_unified_api_params,
     is_quality_production_data,
     filter_quality_orders
 )
+from trumpf_oseon_mcp.utils.pagination import get_unified_api_params
 
 # Load environment variables
 load_dotenv()
